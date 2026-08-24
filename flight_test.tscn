@@ -1,0 +1,29 @@
+[gd_scene format=3 uid="uid://e1c1a16alvjc"]
+
+[ext_resource type="PackedScene" uid="uid://c5p17hr0b1lfl" path="res://player.tscn" id="1_frcqw"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_53s12"]
+size = Vector3(90, 0.5, 90)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_53s12"]
+size = Vector3(60, 0.5, 60)
+
+[node name="FlightTest" type="Node3D" unique_id=6493181]
+
+[node name="Ground" type="StaticBody3D" parent="." unique_id=1359509003]
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground" unique_id=524332965]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.123146296, 0.017845154, 0.024432182)
+mesh = SubResource("BoxMesh_53s12")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground" unique_id=1489014987]
+shape = SubResource("BoxShape3D_53s12")
+
+[node name="Player" parent="." unique_id=349778450 instance=ExtResource("1_frcqw")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.428, 3, 1.072)
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=784581403]
+transform = Transform3D(0.8660254, -0.35355338, 0.35355338, 0, 0.70710677, 0.70710677, -0.5, -0.6123724, 0.6123724, 0, 10, 0)
+light_color = Color(1, 1, 0.8627451, 1)
+light_energy = 1.316
+shadow_enabled = true

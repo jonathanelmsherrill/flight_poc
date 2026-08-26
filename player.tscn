@@ -13,7 +13,9 @@ albedo_color = Color(0.9254902, 0.5882353, 0.9882353, 1)
 [node name="Player" type="CharacterBody3D" unique_id=349778450]
 script = ExtResource("1_4flbx")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=1592946998]
+[node name="VisualRoot" type="Node3D" parent="." unique_id=22347979]
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="VisualRoot" unique_id=1592946998]
 material_override = SubResource("StandardMaterial3D_onrkg")
 mesh = SubResource("CapsuleMesh_sh265")
 

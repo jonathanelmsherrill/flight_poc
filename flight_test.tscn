@@ -3,18 +3,27 @@
 [ext_resource type="PackedScene" uid="uid://c5p17hr0b1lfl" path="res://player.tscn" id="1_frcqw"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_53s12"]
-size = Vector3(90, 0.5, 90)
+size = Vector3(180, 0.5, 180)
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_frcqw"]
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_frcqw"]
+noise = SubResource("FastNoiseLite_frcqw")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_cgkto"]
+albedo_texture = SubResource("NoiseTexture2D_frcqw")
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_53s12"]
-size = Vector3(60, 0.5, 60)
+size = Vector3(180, 0.5, 180)
 
 [node name="FlightTest" type="Node3D" unique_id=6493181]
 
 [node name="Ground" type="StaticBody3D" parent="." unique_id=1359509003]
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Ground" unique_id=524332965]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.123146296, 0.017845154, 0.024432182)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.1856029, -0.053049088, 0.3204136)
 mesh = SubResource("BoxMesh_53s12")
+surface_material_override/0 = SubResource("StandardMaterial3D_cgkto")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Ground" unique_id=1489014987]
 shape = SubResource("BoxShape3D_53s12")

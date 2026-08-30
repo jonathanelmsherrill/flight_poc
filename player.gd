@@ -1,7 +1,16 @@
 extends CharacterBody3D
 
+#Flight observations to fix
+# You slow to a stop too quickly after releasing w. Either drag is too high or wing power too low
+# Right now, regular pulse flying drains stamina (Fixed? )
+# Lift isn't as significant as I want. I can almost as effectively fly straight up 
+# 
+#Handy formula: air drag * max_speed_squared = flap_impulse, so max_speed = sqrt(flap_speed/air_drag)
+
+@export var flyer_profile: FlyerProfile
+
 var gravity: float = 9.8
-var ground_move_speed: float = 6.0
+var ground_move_speed: float = 8.0
 
 # JUMP
 var jump_velocity: float = 4.5
@@ -9,26 +18,26 @@ var jump_velocity: float = 4.5
 # FLIGHT
 var time_since_flap := 10.0
 var extra_flap_min_interval := 0.15
-var regular_vertical_flap_min_interval := 1.00
-var regular_forward_flap_min_interval := 0.5
-var vertical_flap_impulse := 4.2
-var forward_flap_impulse := 4.2
-var vertical_flap_stamina_cost := 14.0
-var forward_flap_stamina_cost := vertical_flap_stamina_cost
+var regular_flap_min_interval := 1.10
+var flap_impulse := 2.5
+#The below may feel like a flyer parameter, but this and the stamina fields can all be multiplied by a value
+#and the net effect is the same. Thus, this could hypothetically always be 1. 1 stamina is one unit of flap.
+#However, keeping it here for now as it allows me to easily modify the cost of flying for experimentation.
+var flap_stamina_cost := 10
 var extra_flap_cost_multiplier := 1.5
+var extra_flap_power_multiplier := 1.5
 
 #Stamina
 var max_stamina := 100.0
 var stamina := max_stamina
-var stamina_recovery := 7.0
+var stamina_recovery := 7
 
 #Lift
-var MAX_UP_VELOCITY := 6.0
-var FLIGHT_SPEED := 10.0 #This is speed necessary for gravity-equaling lift
+var FLIGHT_SPEED := 20.0 #This is speed necessary for gravity-equaling lift
 
 #var air_acceleration: float = 3.0 # replaced by forward_flap
 var air_turn_rate: float = 2.5
-const AIR_DRAG_COEFFICIENT := 0.03
+const AIR_DRAG_COEFFICIENT := 0.008
 
 
 
@@ -51,8 +60,10 @@ const TURN_BRAKING := 18.0
 @onready var stamina_bar: ProgressBar = $CanvasLayer/ProgressBar
 @onready var visual_root: Node3D = $VisualRoot
 
-
-
+# Debug
+@onready var speed_label: Label = $CanvasLayer/DebugContainer/SpeedLabel
+@onready var lift_label: Label = $CanvasLayer/DebugContainer/LiftLabel
+@onready var drag_label: Label = $CanvasLayer/DebugContainer/DragLabel
 
 
 func _physics_process(delta: float) -> void:
@@ -103,7 +114,9 @@ func _physics_process(delta: float) -> void:
 				0.0,
 				VISUAL_TILT_SPEED * delta
 		)
-
+		debug_drag(0)
+		debug_lift(0.0)
+		debug_speed(velocity)
 
 	# FLYING
 	if flying_state:
@@ -132,6 +145,7 @@ func _physics_process(delta: float) -> void:
 
 		var lift_acceleration := gravity * lift_fraction
 		velocity.y += lift_acceleration * delta
+		debug_lift(lift_acceleration)
 
 		var flight_velocity := velocity
 		var flight_speed := flight_velocity.length()
@@ -195,21 +209,46 @@ func _physics_process(delta: float) -> void:
 				horizontal_velocity = player_intended_direction
 
 		# ----------------
-		# THRUST
+		# THRUST / FLAPPING
 		# ----------------
-		# Player wants to flap even though it's not time for a normal one
-		var force_flap := (fresh_keypress and time_since_flap <= regular_forward_flap_min_interval 
-				and time_since_flap >= extra_flap_min_interval)
+		# Refresh after flap impulses so their added velocity is not discarded.
+		horizontal_velocity = Vector3(velocity.x, 0.0, velocity.z)
+		horizontal_speed = horizontal_velocity.length()
+		var movement_input := player_intended_direction.length() > 0.0
+		var space_held := Input.is_action_pressed("jump")
+		var space_pressed := Input.is_action_just_pressed("jump")
+		var wants_flap := movement_input or space_held
+		var force_flap := (
+				space_pressed
+				and time_since_flap >= extra_flap_min_interval
+				and time_since_flap < regular_flap_min_interval
+		)
+
+		if flying_state and wants_flap and (
+				force_flap or time_since_flap >= regular_flap_min_interval
+		) and stamina >= flap_stamina_cost:
+			var flap_direction := player_intended_direction
+			if space_held:
+				flap_direction = Vector3.UP if not movement_input else (
+						Vector3.UP + player_intended_direction
+				).normalized()
+
+			var velocity_conversion_fraction := clampf(
+					horizontal_speed / (2.0 * flap_impulse),
+					0.0,
+					1.0
+			)
+			var thrust_effectiveness := (1.0 - (
+					0.75 * turn_sharpness * velocity_conversion_fraction
+			)) * extra_flap_power_multiplier if force_flap else 1.0
 			
-		if force_flap or (player_intended_direction.length() > 0.0
-			and stamina >= vertical_flap_stamina_cost
-			and time_since_flap >= regular_forward_flap_min_interval ):
-			
-			# Sharp turns reduce how much effort becomes forward thrust.
-			var thrust_effectiveness := 1.0 - 0.75 * turn_sharpness			
-			forward_flap(player_intended_direction,thrust_effectiveness)
-			stamina -= forward_flap_stamina_cost * extra_flap_cost_multiplier if force_flap else 1.0
+			flap(flap_direction, thrust_effectiveness)
+			stamina -= flap_stamina_cost * extra_flap_cost_multiplier if force_flap else flap_stamina_cost
 			time_since_flap = 0.0
+		debug_speed(velocity)
+		# Include any flap impulse in the vector passed to drag.
+		horizontal_velocity = Vector3(velocity.x, 0.0, velocity.z)
+		horizontal_speed = horizontal_velocity.length()
 			
 		# ----------------
 		# DRAG
@@ -248,6 +287,7 @@ func _physics_process(delta: float) -> void:
 				0.0,
 				flight_speed - air_drag * delta
 		)
+		debug_drag(air_drag)
 
 		# Reapply final speed to the full 3D direction.
 		if flight_velocity.length() > 0.01:
@@ -280,34 +320,20 @@ func _physics_process(delta: float) -> void:
 
 		if not flying_state:
 			velocity.y = jump_velocity
-			time_since_flap = regular_vertical_flap_min_interval / 2.0
+			time_since_flap = regular_flap_min_interval / 2.0
 
 		elif time_since_flap >= extra_flap_min_interval:
 			var tap_flap_cost := (
-					vertical_flap_stamina_cost *
+					flap_stamina_cost *
 					extra_flap_cost_multiplier
 			)
 
 			if stamina >= tap_flap_cost:
-				vertical_flap()
+				flap(Vector3.UP)
 
 				stamina -= tap_flap_cost
 				time_since_flap = 0.0
 
-
-	# ----------------
-	# HELD VERTICAL FLAPPING
-	# ----------------
-
-	if (	flying_state
-			and Input.is_action_pressed("jump")
-			and stamina >= vertical_flap_stamina_cost
-			and time_since_flap >= regular_vertical_flap_min_interval
-	):
-		vertical_flap()
-
-		stamina -= vertical_flap_stamina_cost
-		time_since_flap = 0.0
 
 
 	# ----------------
@@ -375,24 +401,8 @@ func _input(event: InputEvent) -> void:
 		)
 
 
-func vertical_flap() -> void:
-	var flap_target_velocity := MAX_UP_VELOCITY
-
-	var flap_effectiveness: float = clamp(
-			1.0 - velocity.y / flap_target_velocity,
-			0.0,
-			1.0
-	)
-
-	velocity.y += (
-			vertical_flap_impulse *
-			flap_effectiveness
-	)
-	
-	flap_visual()
-
-func forward_flap(flight_forward : Vector3, thrust_effectiveness : float = 1.0) -> void:
-	velocity += flight_forward.normalized() * forward_flap_impulse * thrust_effectiveness 
+func flap(flap_direction: Vector3, flap_effectiveness: float = 1.0) -> void:
+	velocity += flap_direction.normalized() * flap_impulse * flap_effectiveness
 	flap_visual()
 	
 
@@ -418,3 +428,15 @@ func flap_visual() -> void:
 			Vector3.ONE,
 			0.18
 	)
+
+
+func debug_speed(velocity : Vector3):
+	speed_label.text = "Speed: %.1f m/s" % velocity.length()
+	
+func debug_lift(lift_acceleration : float):
+	lift_label.text = "Lift: %.0f%% gravity" % (
+		lift_acceleration / gravity * 100.0
+	)
+
+func debug_drag(drag_acceleration : float):
+	drag_label.text = "Drag: %.1f m/s²" % drag_acceleration

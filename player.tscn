@@ -44,3 +44,16 @@ offset_top = -30.0
 offset_right = 250.0
 grow_vertical = 0
 value = 100.0
+
+[node name="DebugContainer" type="VBoxContainer" parent="CanvasLayer" unique_id=2112588850]
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="SpeedLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=184007829]
+layout_mode = 2
+
+[node name="LiftLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=2092822950]
+layout_mode = 2
+
+[node name="DragLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=2101828789]
+layout_mode = 2

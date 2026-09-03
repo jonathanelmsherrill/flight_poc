@@ -33,7 +33,6 @@ var stamina : float
 
 @onready var camera_pivot: Node3D = $CameraPivot
 @onready var camera_pitch: Node3D = $CameraPivot/CameraPitch
-@onready var spring_arm: SpringArm3D = $CameraPivot/CameraPitch/SpringArm3D
 @onready var stamina_bar: ProgressBar = $CanvasLayer/ProgressBar
 @onready var visual_root: Node3D = $VisualRoot
 
@@ -187,10 +186,6 @@ func _physics_process(delta: float) -> void:
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
-	spring_arm.add_excluded_object(
-			get_rid()
-	)
-
 	stamina = flyer_profile.max_stamina
 	stamina_bar.max_value = flyer_profile.max_stamina
 	stamina_bar.value = stamina
@@ -199,21 +194,6 @@ func _ready() -> void:
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-
-	if event is InputEventMouseMotion:
-		camera_pivot.rotate_y(
-				-event.relative.x * 0.005
-		)
-
-		camera_pitch.rotate_x(
-				-event.relative.y * 0.005
-		)
-
-		camera_pitch.rotation.x = clamp(
-				camera_pitch.rotation.x,
-				deg_to_rad(-80),
-				deg_to_rad(80)
-		)
 
 # We assume the player wants to go where they're looking for now
 func player_intended_direction() -> Vector3:

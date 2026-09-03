@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://c5p17hr0b1lfl"]
 
 [ext_resource type="Script" uid="uid://drac0bmj6fty3" path="res://player.gd" id="1_4flbx"]
-[ext_resource type="Script" uid="uid://db5wk4ico1c55" path="res://CameraSpringArm.gd" id="2_onrkg"]
+[ext_resource type="Script" uid="uid://d1xe4swdgft31" path="res://player_camera.gd" id="2_i3pqv"]
 [ext_resource type="Script" uid="uid://721e6mb0owf4" path="res://flight_hud.gd" id="3_i3pqv"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_onrkg"]
@@ -39,10 +39,10 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
 
 [node name="SpringArm3D" type="SpringArm3D" parent="CameraPivot/CameraPitch/FreelookPivot/FreelookPitch" unique_id=1203681165]
 spring_length = 5.0
-script = ExtResource("2_onrkg")
 
 [node name="Camera3D" type="Camera3D" parent="CameraPivot/CameraPitch/FreelookPivot/FreelookPitch/SpringArm3D" unique_id=825621964]
 current = true
+script = ExtResource("2_i3pqv")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1316182793]
 

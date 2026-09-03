@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://drac0bmj6fty3" path="res://player.gd" id="1_4flbx"]
 [ext_resource type="Script" uid="uid://db5wk4ico1c55" path="res://CameraSpringArm.gd" id="2_onrkg"]
+[ext_resource type="Script" uid="uid://721e6mb0owf4" path="res://flight_hud.gd" id="3_i3pqv"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_onrkg"]
 albedo_color = Color(0.9254902, 0.5882353, 0.9882353, 1)
@@ -9,6 +10,11 @@ albedo_color = Color(0.9254902, 0.5882353, 0.9882353, 1)
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_sh265"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_4flbx"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_onrkg"]
+font_size = 31
+outline_size = 2
+outline_color = Color(0.57, 1, 0.5915, 1)
 
 [node name="Player" type="CharacterBody3D" unique_id=349778450]
 script = ExtResource("1_4flbx")
@@ -27,11 +33,15 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
 
 [node name="CameraPitch" type="Node3D" parent="CameraPivot" unique_id=1721016019]
 
-[node name="SpringArm3D" type="SpringArm3D" parent="CameraPivot/CameraPitch" unique_id=1203681165]
+[node name="FreelookPivot" type="Node3D" parent="CameraPivot/CameraPitch" unique_id=1075544593]
+
+[node name="FreelookPitch" type="Node3D" parent="CameraPivot/CameraPitch/FreelookPivot" unique_id=1266083158]
+
+[node name="SpringArm3D" type="SpringArm3D" parent="CameraPivot/CameraPitch/FreelookPivot/FreelookPitch" unique_id=1203681165]
 spring_length = 5.0
 script = ExtResource("2_onrkg")
 
-[node name="Camera3D" type="Camera3D" parent="CameraPivot/CameraPitch/SpringArm3D" unique_id=825621964]
+[node name="Camera3D" type="Camera3D" parent="CameraPivot/CameraPitch/FreelookPivot/FreelookPitch/SpringArm3D" unique_id=825621964]
 current = true
 
 [node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1316182793]
@@ -57,3 +67,48 @@ layout_mode = 2
 
 [node name="DragLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=2101828789]
 layout_mode = 2
+
+[node name="FlightHud" type="Control" parent="CanvasLayer" unique_id=545056545 node_paths=PackedStringArray("player", "camera")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("3_i3pqv")
+player = NodePath("../..")
+camera = NodePath("../../CameraPivot/CameraPitch/FreelookPivot/FreelookPitch/SpringArm3D/Camera3D")
+
+[node name="AimReticle" type="Label" parent="CanvasLayer/FlightHud" unique_id=1697703866]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -22.0
+offset_top = -22.0
+offset_right = 22.0
+offset_bottom = 22.0
+grow_horizontal = 2
+grow_vertical = 2
+offset_transform_enabled = true
+text = "+"
+label_settings = SubResource("LabelSettings_onrkg")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="IntendedDirection" type="Label" parent="CanvasLayer/FlightHud" unique_id=401495180]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 23.0
+text = "+"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ActualDirection" type="Label" parent="CanvasLayer/FlightHud" unique_id=1110861903]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 23.0
+text = "x"

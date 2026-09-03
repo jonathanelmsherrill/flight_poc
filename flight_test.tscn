@@ -4,7 +4,7 @@
 [ext_resource type="Script" uid="uid://dgid76bx4k6m8" path="res://flyer_profile.gd" id="2_xnmnc"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_53s12"]
-size = Vector3(180, 0.5, 180)
+size = Vector3(1800, 0.5, 180)
 
 [sub_resource type="FastNoiseLite" id="FastNoiseLite_frcqw"]
 
@@ -15,7 +15,7 @@ noise = SubResource("FastNoiseLite_frcqw")
 albedo_texture = SubResource("NoiseTexture2D_frcqw")
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_53s12"]
-size = Vector3(180, 0.5, 180)
+size = Vector3(1800, 0.5, 180)
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_frcqw"]
 top_radius = 45.0

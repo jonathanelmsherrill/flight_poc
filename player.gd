@@ -303,9 +303,21 @@ func apply_aerodynamics(delta: float) -> void:
 	)
 	requested_aerodynamic_force = actual_force
 	var normal_force_direction := get_normal_force_direction(air_velocity, desired_velocity_direction)
+	var angle_based_effective_force := get_normalized_normal_force(
+			actual_force,
+			air_velocity,
+			normal_force_direction,
+			delta
+	)
+	var chord_based_effective_force := get_normalized_normal_force(
+			chord_based_force,
+			air_velocity,
+			normal_force_direction,
+			delta
+	)
 	aerodynamic_force_calculation_difference = (
-			actual_force - chord_based_force
-	).dot(normal_force_direction)
+			angle_based_effective_force - chord_based_effective_force
+	)
 	# Apply both aerodynamic contributions, then report their resulting components.
 	var wing_acceleration := apply_wing_force(actual_force, delta)
 	var drag_acceleration := apply_induced_drag(
@@ -399,6 +411,25 @@ func get_chord_based_requested_aerodynamic_force(
 	)
 	return desired_force_direction * minf(required_force_magnitude, available_force)
 
+
+func get_normalized_normal_force(
+		force: Vector3,
+		air_velocity: Vector3,
+		normal_force_direction: Vector3,
+		delta: float
+) -> float:
+	var airspeed := air_velocity.length()
+	if airspeed < 0.01 or normal_force_direction == Vector3.ZERO:
+		return 0.0
+
+	var corrected_velocity := air_velocity + force / flyer_profile.base_mass * delta
+	corrected_velocity = corrected_velocity.normalized() * airspeed
+	var normal_velocity_change := (
+			corrected_velocity - air_velocity
+	).dot(normal_force_direction)
+	return normal_velocity_change * flyer_profile.base_mass / delta
+
+
 func apply_wing_force(force: Vector3, delta: float) -> Vector3:
 	var before_speed := velocity.length()
 	var acceleration := force / flyer_profile.base_mass
@@ -479,7 +510,7 @@ func debug_requested_aerodynamic_force() -> void:
 
 
 func debug_aerodynamic_force_difference() -> void:
-	aerodynamic_force_difference_label.text = "Normal Force Difference: %.1f N" % aerodynamic_force_calculation_difference
+	aerodynamic_force_difference_label.text = "Corrected Normal Force Difference: %.1f N" % aerodynamic_force_calculation_difference
 	
 func debug_lift(lift_acceleration : float):
 	lift_label.text = "Lift: %.0f%% gravity" % (

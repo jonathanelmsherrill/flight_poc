@@ -15,6 +15,7 @@ var jump_velocity: float = 4.5
 # FLIGHT
 var time_since_flap := 10.0
 var current_flap_direction := Vector3.ZERO
+var requested_aerodynamic_force := Vector3.ZERO
 # This and the stamina fields can all be multiplied by a value
 # and the net effect is the same. Thus, this could hypothetically always be 1. 1 stamina would then be one unit of flap.
 # However, keeping it here for now as it allows me to easily modify the cost of flying for experimentation.
@@ -38,6 +39,10 @@ var stamina : float
 
 # Debug
 @onready var speed_label: Label = $CanvasLayer/DebugContainer/SpeedLabel
+@onready var horizontal_speed_label: Label = $CanvasLayer/DebugContainer/HorizontalSpeedLabel
+@onready var vertical_speed_label: Label = $CanvasLayer/DebugContainer/VerticalSpeedLabel
+@onready var total_energy_label: Label = $CanvasLayer/DebugContainer/TotalEnergyLabel
+@onready var requested_aerodynamic_force_label: Label = $CanvasLayer/DebugContainer/RequestedAerodynamicForceLabel
 @onready var lift_label: Label = $CanvasLayer/DebugContainer/LiftLabel
 @onready var drag_label: Label = $CanvasLayer/DebugContainer/DragLabel
 
@@ -46,6 +51,8 @@ func _physics_process(delta: float) -> void:
 	time_since_flap = minf(time_since_flap + delta, 10.0)
 
 	var flying_state := not is_on_floor()
+	if not flying_state:
+		requested_aerodynamic_force = Vector3.ZERO
 
 	var input_vector := Input.get_vector(
 			"move_left",
@@ -180,6 +187,10 @@ func _physics_process(delta: float) -> void:
 		)
 
 	debug_speed(velocity)
+	debug_horizontal_speed(velocity)
+	debug_vertical_speed(velocity)
+	debug_total_energy()
+	debug_requested_aerodynamic_force()
 	move_and_slide()
 
 
@@ -263,23 +274,23 @@ func apply_aerodynamics(delta: float) -> void:
 	var airspeed := air_velocity.length()
 
 	if airspeed < 0.2:
+		requested_aerodynamic_force = Vector3.ZERO
 		debug_lift(0.0)
 		debug_drag(0.0)
 		return
 
-	#Where we goin?
+	#Where we trying to go?
 	var desired_velocity_direction := player_intended_direction()
-	var desired_force_direction := get_desired_aerodynamic_force_direction(air_velocity)
 	# How hard can we go there?
 	var available_force := get_available_aerodynamic_force(airspeed)
 	#How hard SHOULD we go there?
 	var actual_force := get_requested_aerodynamic_force(
-			desired_force_direction,
 			desired_velocity_direction,
 			available_force,
 			air_velocity,
 			delta
 	)
+	requested_aerodynamic_force = actual_force
 	# Apply both aerodynamic contributions, then report their resulting components.
 	var wing_acceleration := apply_wing_force(actual_force, delta)
 	var drag_acceleration := apply_induced_drag(
@@ -295,21 +306,7 @@ func apply_aerodynamics(delta: float) -> void:
 	))
 
 
-# Where are we trying to have our wings make us go?
-func get_desired_aerodynamic_force_direction(air_velocity: Vector3) -> Vector3:
-	var flight_direction := air_velocity.normalized()
-	var player_intended_dir := player_intended_direction()
-	# Reminder - this takes the player intended direction and subtracts the projection of it along our existing velocity
-	# That leaves only the perpendicular component. We're not trying to speed up or slow down. 
-	var steering := (
-			player_intended_dir
-			- flight_direction
-			* player_intended_dir.dot(flight_direction)
-	)
-	if steering.length_squared() < 0.0001:
-		return Vector3.ZERO
 
-	return steering.normalized()
 
 # How much force can we provide? 
 func get_available_aerodynamic_force(airspeed: float) -> float:
@@ -325,17 +322,31 @@ func get_available_aerodynamic_force(airspeed: float) -> float:
 	)
 	return minf(airflow_force, structural_force)
 
+# What is the direction of the vector that will take us towards where we want to go?
+func get_normal_force_direction(air_velocity: Vector3, player_intended_dir: Vector3) -> Vector3:
+	var flight_direction := air_velocity.normalized()
+	# Reminder - this takes the player intended direction and subtracts the projection of it along our existing velocity
+	# That leaves only the perpendicular component. We're not trying to speed up or slow down. 
+	var steering := (
+			player_intended_dir
+			- flight_direction
+			* player_intended_dir.dot(flight_direction)
+	)
+	if steering.length_squared() < 0.0001:
+		return Vector3.ZERO
+
+	return steering.normalized()
+
 # How much force do we actually want to use of our max possible? 
 func get_requested_aerodynamic_force(
-		desired_force_direction: Vector3,
 		desired_velocity_direction: Vector3,
 		available_force: float,
 		air_velocity: Vector3,
 		delta: float
 ) -> Vector3:
+	var desired_force_direction := get_normal_force_direction(air_velocity, desired_velocity_direction)
 	if desired_force_direction == Vector3.ZERO:
 		return Vector3.ZERO
-
 	# Preserve airspeed while asking for the desired heading. The difference from
 	# the post-gravity velocity is the change needed to arrive there this frame.
 	var desired_velocity := desired_velocity_direction.normalized() * air_velocity.length()
@@ -345,15 +356,17 @@ func get_requested_aerodynamic_force(
 			delta *
 			flyer_profile.base_mass
 	)
-
 	return desired_force_direction * minf(
 			required_force_magnitude,
 			available_force
 	)
 
 func apply_wing_force(force: Vector3, delta: float) -> Vector3:
+	var before_speed := velocity.length()
 	var acceleration := force / flyer_profile.base_mass
 	velocity += acceleration * delta
+	#Discreet correction 
+	velocity = velocity.normalized() * before_speed
 	return acceleration
 
 
@@ -403,7 +416,28 @@ func flap_visual() -> void:
 
 
 func debug_speed(velocity : Vector3):
-	speed_label.text = "Speed: %.1f m/s" % velocity.length()
+	speed_label.text = "Speed: %.1f m/s" % (velocity.length() * velocity.sign().z)
+
+
+func debug_horizontal_speed(velocity: Vector3) -> void:
+	horizontal_speed_label.text = "Horizontal Speed: %.1f m/s" % Vector2(
+			velocity.x,
+			velocity.z
+	).length()
+
+
+func debug_vertical_speed(velocity: Vector3) -> void:
+	vertical_speed_label.text = "Vertical Speed: %.1f m/s" % velocity.y
+
+
+func debug_total_energy() -> void:
+	var kinetic_energy := 0.5 * flyer_profile.base_mass * velocity.length_squared()
+	var potential_energy := flyer_profile.base_mass * gravity * global_position.y
+	total_energy_label.text = "Total Energy: %.0f J" % (kinetic_energy + potential_energy)
+
+
+func debug_requested_aerodynamic_force() -> void:
+	requested_aerodynamic_force_label.text = "Requested Aero Force: %.0f N" % requested_aerodynamic_force.length()
 	
 func debug_lift(lift_acceleration : float):
 	lift_label.text = "Lift: %.0f%% gravity" % (

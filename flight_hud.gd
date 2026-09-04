@@ -5,6 +5,7 @@ extends Control
 
 @onready var desired_marker: Label = $IntendedDirection
 @onready var velocity_marker: Label = $ActualDirection
+@onready var requested_aerodynamic_force_marker: Label = $RequestedAerodynamicForce
 @onready var aim_marker: Label = $AimReticle
 
 var aim_reticle_pos : Vector2
@@ -15,7 +16,9 @@ var velocity_marker_default_color: Color
 func _ready() -> void:
 	setup_label(desired_marker)
 	setup_label(velocity_marker)
+	setup_label(requested_aerodynamic_force_marker)
 	setup_label(aim_marker)
+	requested_aerodynamic_force_marker.modulate = Color.YELLOW
 	desired_marker_default_color = desired_marker.modulate
 	velocity_marker_default_color = velocity_marker.modulate
 	aim_reticle_pos = get_viewport().get_visible_rect().size / 2.0
@@ -26,8 +29,13 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	var intent_direction := player.player_intended_direction()
 	var player_velocity := player.velocity
+	var requested_aerodynamic_force := player.requested_aerodynamic_force
 	place_reticle(desired_marker,direction_to_screen(intent_direction))
 	place_reticle(velocity_marker, direction_to_screen(player_velocity))
+	place_reticle(
+			requested_aerodynamic_force_marker,
+			direction_to_screen(requested_aerodynamic_force)
+	)
 	set_marker_behind_color(
 			desired_marker,
 			direction_is_behind_camera(intent_direction),
@@ -40,6 +48,7 @@ func _process(delta: float) -> void:
 	)
 	desired_marker.visible = desired_marker.position.distance_squared_to(aim_reticle_pos) > 2
 	velocity_marker.visible = player.velocity.length() >= 1
+	requested_aerodynamic_force_marker.visible = requested_aerodynamic_force.length() >= 0.1
 
 # Project the direction to 100 meters away and figure out where that appears on the camera
 func direction_to_screen(direction: Vector3) -> Vector2:

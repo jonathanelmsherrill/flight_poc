@@ -62,6 +62,18 @@ offset_bottom = 40.0
 [node name="SpeedLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=184007829]
 layout_mode = 2
 
+[node name="HorizontalSpeedLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=1564899882]
+layout_mode = 2
+
+[node name="VerticalSpeedLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=496292676]
+layout_mode = 2
+
+[node name="TotalEnergyLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=1682315921]
+layout_mode = 2
+
+[node name="RequestedAerodynamicForceLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=1222768850]
+layout_mode = 2
+
 [node name="LiftLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=2092822950]
 layout_mode = 2
 
@@ -112,3 +124,12 @@ layout_mode = 0
 offset_right = 40.0
 offset_bottom = 23.0
 text = "x"
+
+[node name="RequestedAerodynamicForce" type="Label" parent="CanvasLayer/FlightHud" unique_id=1482660758]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 23.0
+theme_override_colors/font_color = Color(1, 1, 0, 1)
+text = "O"
+horizontal_alignment = 1
+vertical_alignment = 1

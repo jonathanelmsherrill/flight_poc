@@ -74,6 +74,9 @@ layout_mode = 2
 [node name="RequestedAerodynamicForceLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=1222768850]
 layout_mode = 2
 
+[node name="AerodynamicForceDifferenceLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=207800817]
+layout_mode = 2
+
 [node name="LiftLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=2092822950]
 layout_mode = 2
 

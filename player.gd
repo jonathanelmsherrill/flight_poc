@@ -16,7 +16,6 @@ var jump_velocity: float = 4.5
 var time_since_flap := 10.0
 var current_flap_direction := Vector3.ZERO
 var requested_aerodynamic_force := Vector3.ZERO
-var aerodynamic_force_calculation_difference := 0.0
 # This and the stamina fields can all be multiplied by a value
 # and the net effect is the same. Thus, this could hypothetically always be 1. 1 stamina would then be one unit of flap.
 # However, keeping it here for now as it allows me to easily modify the cost of flying for experimentation.
@@ -44,7 +43,6 @@ var stamina : float
 @onready var vertical_speed_label: Label = $CanvasLayer/DebugContainer/VerticalSpeedLabel
 @onready var total_energy_label: Label = $CanvasLayer/DebugContainer/TotalEnergyLabel
 @onready var requested_aerodynamic_force_label: Label = $CanvasLayer/DebugContainer/RequestedAerodynamicForceLabel
-@onready var aerodynamic_force_difference_label: Label = $CanvasLayer/DebugContainer/AerodynamicForceDifferenceLabel
 @onready var lift_label: Label = $CanvasLayer/DebugContainer/LiftLabel
 @onready var drag_label: Label = $CanvasLayer/DebugContainer/DragLabel
 
@@ -55,7 +53,6 @@ func _physics_process(delta: float) -> void:
 	var flying_state := not is_on_floor()
 	if not flying_state:
 		requested_aerodynamic_force = Vector3.ZERO
-		aerodynamic_force_calculation_difference = 0.0
 
 	var input_vector := Input.get_vector(
 			"move_left",
@@ -194,7 +191,6 @@ func _physics_process(delta: float) -> void:
 	debug_vertical_speed(velocity)
 	debug_total_energy()
 	debug_requested_aerodynamic_force()
-	debug_aerodynamic_force_difference()
 	move_and_slide()
 
 
@@ -279,7 +275,6 @@ func apply_aerodynamics(delta: float) -> void:
 
 	if airspeed < 0.2:
 		requested_aerodynamic_force = Vector3.ZERO
-		aerodynamic_force_calculation_difference = 0.0
 		debug_lift(0.0)
 		debug_drag(0.0)
 		return
@@ -295,29 +290,7 @@ func apply_aerodynamics(delta: float) -> void:
 			air_velocity,
 			delta
 	)
-	var chord_based_force := get_chord_based_requested_aerodynamic_force(
-			desired_velocity_direction,
-			available_force,
-			air_velocity,
-			delta
-	)
 	requested_aerodynamic_force = actual_force
-	var normal_force_direction := get_normal_force_direction(air_velocity, desired_velocity_direction)
-	var angle_based_effective_force := get_normalized_normal_force(
-			actual_force,
-			air_velocity,
-			normal_force_direction,
-			delta
-	)
-	var chord_based_effective_force := get_normalized_normal_force(
-			chord_based_force,
-			air_velocity,
-			normal_force_direction,
-			delta
-	)
-	aerodynamic_force_calculation_difference = (
-			angle_based_effective_force - chord_based_effective_force
-	)
 	# Apply both aerodynamic contributions, then report their resulting components.
 	var wing_acceleration := apply_wing_force(actual_force, delta)
 	var drag_acceleration := apply_induced_drag(
@@ -365,34 +338,13 @@ func get_normal_force_direction(air_velocity: Vector3, player_intended_dir: Vect
 	return steering.normalized()
 
 # How much force do we actually want to use of our max possible? 
+# There's a tiny issue with this approach in that it computes the acceleration needed to take us to our 
+# desired direction in one second. In continuous physics this would be fine, but in discreet physics
+# the force can't be tangent to the start and end velocity, so it can impart energy.
+# We normalize the veloicty in apply_wing_force, but that can have a sublte change on the direction. 
+# Comparing to an angle based exact metric, I found it to make less than a tenth of newton of differece so
+# Practically not an issue. 
 func get_requested_aerodynamic_force(
-		desired_velocity_direction: Vector3,
-		available_force: float,
-		air_velocity: Vector3,
-		delta: float
-) -> Vector3:
-	var desired_force_direction := get_normal_force_direction(air_velocity, desired_velocity_direction)
-	if desired_force_direction == Vector3.ZERO:
-		return Vector3.ZERO
-	var flight_direction := air_velocity.normalized()
-	var desired_direction := desired_velocity_direction.normalized()
-	var turn_angle := acos(clampf(flight_direction.dot(desired_direction), -1.0, 1.0))
-	# A perpendicular impulse of speed * tan(turn_angle) rotates a normalized velocity by turn_angle.
-	# A single impulse cannot turn farther than 90 degrees, so larger turns use all available force.
-	turn_angle = minf(turn_angle, PI * 0.5 - 0.001)
-	var required_force_magnitude := (
-			air_velocity.length() *
-		tan(turn_angle) /
-			delta *
-			flyer_profile.base_mass
-	)
-	return desired_force_direction * minf(
-			required_force_magnitude,
-			available_force
-	)
-
-
-func get_chord_based_requested_aerodynamic_force(
 		desired_velocity_direction: Vector3,
 		available_force: float,
 		air_velocity: Vector3,
@@ -412,30 +364,12 @@ func get_chord_based_requested_aerodynamic_force(
 	return desired_force_direction * minf(required_force_magnitude, available_force)
 
 
-func get_normalized_normal_force(
-		force: Vector3,
-		air_velocity: Vector3,
-		normal_force_direction: Vector3,
-		delta: float
-) -> float:
-	var airspeed := air_velocity.length()
-	if airspeed < 0.01 or normal_force_direction == Vector3.ZERO:
-		return 0.0
-
-	var corrected_velocity := air_velocity + force / flyer_profile.base_mass * delta
-	corrected_velocity = corrected_velocity.normalized() * airspeed
-	var normal_velocity_change := (
-			corrected_velocity - air_velocity
-	).dot(normal_force_direction)
-	return normal_velocity_change * flyer_profile.base_mass / delta
-
-
 func apply_wing_force(force: Vector3, delta: float) -> Vector3:
 	var before_speed := velocity.length()
 	var acceleration := force / flyer_profile.base_mass
 	velocity += acceleration * delta
 	#Discreet correction 
-	velocity = velocity.normalized() * before_speed
+	# velocity = velocity.normalized() * before_speed
 	return acceleration
 
 
@@ -459,6 +393,13 @@ func apply_drag_force(force: float, delta: float) -> Vector3:
 	var acceleration := drag_direction * force / flyer_profile.base_mass
 	velocity += acceleration * delta
 	return acceleration
+
+
+
+
+
+
+
 
 
 func flap_visual() -> void:
@@ -509,9 +450,6 @@ func debug_requested_aerodynamic_force() -> void:
 	requested_aerodynamic_force_label.text = "Requested Aero Force: %.0f N" % requested_aerodynamic_force.length()
 
 
-func debug_aerodynamic_force_difference() -> void:
-	aerodynamic_force_difference_label.text = "Corrected Normal Force Difference: %.1f N" % aerodynamic_force_calculation_difference
-	
 func debug_lift(lift_acceleration : float):
 	lift_label.text = "Lift: %.0f%% gravity" % (
 		lift_acceleration / gravity * 100.0

@@ -73,8 +73,9 @@ extends Resource
 # Fun fact: If left to black body emissions, our heroine would have a body temperature of around 500F.
 # Those giant wings must also be fantastic heat exchangers. 
 # Handy formula: max_speed= cube_root(power_stroke_percentage * flap_power / air_drag_coefficient / mass)	
-# So 2500 max power at 45 kg and 0.008 drag ~= 11 m/s top speed, about 24 mph.  
-@export var max_flap_power := 3500.0
+# So 2500 max power at 45 kg and 0.008 drag ~= 11 m/s top speed, about 24 mph.
+# And 4500 max power ~= 30 mph, which actually makes for a nicer game. She sustains twice the instantaneous peak output of top athletes! 
+@export var max_flap_power := 4500.0
 
 # How long is one beat cycle. This is mostly visual but also affects the "feel" of flying. 
 # Stamina norms out time now so net stamina cost is unaffected, but larger values make it chunkier.

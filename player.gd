@@ -1,43 +1,32 @@
 class_name Player
 extends CharacterBody3D
 
-#Flight observations to fix
-
-
 @export var flyer_profile: FlyerProfile
 
-var gravity: float = 9.8
-var ground_move_speed: float = 8.0
-
-# JUMP
-var jump_velocity: float = 4.5
-
-# FLIGHT
-var time_since_flap := 10.0
-var current_flap_direction := Vector3.ZERO
-var requested_aerodynamic_force := Vector3.ZERO
-# This and the stamina fields can all be multiplied by a value
-# and the net effect is the same. Thus, this could hypothetically always be 1. 1 stamina would then be one unit of flap.
-# However, keeping it here for now as it allows me to easily modify the cost of flying for experimentation.
+const GROUND_MOVE_SPEED := 8.0
+const JUMP_VELOCITY := 4.5
 const FLAP_STAMINA_COST := 9.0
-var extra_flap_cost_multiplier := 1.5
+const EXTRA_FLAP_COST_MULTIPLIER := 1.5
 const POWER_STROKE_PERCENTAGE := 0.2
-const INDUCED_DRAG_COEFFICIENT := 0.14#Not even sure what unit this is, but folds in wing aspect ratio. 
+const BODY_DIRECTION_RESPONSE := 6.0
+const WING_DIRECTION_RESPONSE := 9.0
+const AOA_RESPONSE_RATE := deg_to_rad(240.0)
+#const AOA_RESPONSE_RATE := deg_to_rad(360.0)
 
-# Flight - visual
-const MAX_VISUAL_TILT := deg_to_rad(55.0)
-const FULL_TILT_SPEED := 12.0
-const VISUAL_TILT_SPEED := 5.0
+var ground_input_controller := GroundInputController.new()
+var flight_input_controller := FlightInputController.new()
+var flight_controller := FlightController.new()
+var flight_physics := FlightPhysics.new()
+var flyer_state := FlyerState.new()
+var physics_result := FlightPhysicsResult.new()
+var time_since_flap := 10.0
+var stamina := 0.0
 var flap_tween: Tween
-var stamina : float
 
-
-@onready var camera_pivot: Node3D = $CameraPivot
 @onready var camera_pitch: Node3D = $CameraPivot/CameraPitch
 @onready var stamina_bar: ProgressBar = $CanvasLayer/ProgressBar
 @onready var visual_root: Node3D = $VisualRoot
 
-# Debug
 @onready var speed_label: Label = $CanvasLayer/DebugContainer/SpeedLabel
 @onready var horizontal_speed_label: Label = $CanvasLayer/DebugContainer/HorizontalSpeedLabel
 @onready var vertical_speed_label: Label = $CanvasLayer/DebugContainer/VerticalSpeedLabel
@@ -47,413 +36,242 @@ var stamina : float
 @onready var drag_label: Label = $CanvasLayer/DebugContainer/DragLabel
 
 
-func _physics_process(delta: float) -> void:
-	time_since_flap = minf(time_since_flap + delta, 10.0)
-
-	var flying_state := not is_on_floor()
-	if not flying_state:
-		requested_aerodynamic_force = Vector3.ZERO
-
-	var input_vector := Input.get_vector(
-			"move_left",
-			"move_right",
-			"move_forward",
-			"move_backward"
-	)
-	var camera_forward := -camera_pitch.global_basis.z
-	var camera_right := camera_pitch.global_basis.x
-
-	# Walking uses the camera's heading, ignoring its pitch.
-	var ground_forward := camera_forward
-	var ground_right := camera_right
-	ground_forward.y = 0.0
-	ground_right.y = 0.0
-	ground_forward = ground_forward.normalized()
-	ground_right = ground_right.normalized()
-
-
-	# Gravity - Always applies unless touching grass. Might someday apply on steep slopes, during a crash/slide, etc
-	# sky's not the limit, it's actually the simple use-case. Go down.
-	if not is_on_floor():
-		velocity.y -= gravity * delta
-
-
-	# WALKING - Just go where pointed.
-	if not flying_state:
-		var player_intended_direction := (
-				ground_right * input_vector.x +
-				ground_forward * -input_vector.y
-		).normalized()
-		
-		velocity.x = player_intended_direction.x * ground_move_speed
-		velocity.z = player_intended_direction.z * ground_move_speed
-		
-		visual_root.rotation.x = lerp_angle(
-				visual_root.rotation.x,
-				0.0,
-				VISUAL_TILT_SPEED * delta
-		)
-
-		# ----------------
-		# JUMP / TAP FLAP
-		# ----------------
-	
-		if Input.is_action_just_pressed("jump"):
-			velocity.y = jump_velocity
-			time_since_flap = flyer_profile.flap_cycle_duration / 2.0
-			
-			
-		debug_drag(0)
-		debug_lift(0.0)
-
-	# FLYING
-	if flying_state:
-		
-		var player_intended_direction := (
-				camera_right * input_vector.x +
-				camera_forward * -input_vector.y
-		).normalized()
-
-		# ----------------
-		# FLAP PLAN / POWER STROKE
-		# ----------------
-		update_flap_plan(player_intended_direction)
-		apply_flap_force(delta)
-
-		
-
-		# ----------------
-		# LIFT AND TURNING - wings shifting velocity vector based on camera direction + keypress 
-		# ----------------
-
-		apply_aerodynamics(delta)
-
-		
-			
-		# ----------------
-		# PARASITICAL DRAG
-		# ----------------
-		apply_drag_force(flyer_profile.parasite_drag_coefficient*velocity.length_squared(),delta)
-		
-
-		# ------------------
-		# Tilt to indicate velocity
-		var horizontal_velocity := Vector3(velocity.x, 0.0, velocity.z)
-		var horizontal_speed := horizontal_velocity.length()
-		var speed_fraction := clampf(
-				horizontal_speed / FULL_TILT_SPEED,
-				0.0,
-				1.0
-		)
-		
-		var target_tilt := -MAX_VISUAL_TILT * speed_fraction
-		
-		visual_root.rotation.x = lerp_angle(
-		visual_root.rotation.x,
-		target_tilt,
-		VISUAL_TILT_SPEED * delta
-		)
-
-
-	# ----------------
-	# STAMINA RECOVERY
-	# ----------------
-
-	stamina = minf(
-			stamina + flyer_profile.stamina_recovery * delta,
-			flyer_profile.max_stamina
-	)
-
-	stamina = clamp(
-			stamina,
-			0.0,
-			flyer_profile.max_stamina
-	)
-
-	stamina_bar.value = stamina
-	
-	# -----------
-	# Camera and tilt
-	#-------------
-	# That is, if we're tilted, point the tilt in the direction of motion.
-	var horizontal_speed := Vector2(velocity.x, velocity.z).length()
-	if horizontal_speed > 0.1:
-		var target_yaw := atan2(-velocity.x, -velocity.z)
-		
-		visual_root.rotation.y = lerp_angle(
-		visual_root.rotation.y,
-		target_yaw,
-		5.0 * delta
-		)
-
-	debug_speed(velocity)
-	debug_horizontal_speed(velocity)
-	debug_vertical_speed(velocity)
-	debug_total_energy()
-	debug_requested_aerodynamic_force()
-	move_and_slide()
-
-
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-
+	flight_input_controller.steering_frame = camera_pitch
+	flyer_state.body_direction = -global_basis.z
+	flyer_state.wing_lift_direction = global_basis.y
+	flyer_state.wing_normal = global_basis.y
 	stamina = flyer_profile.max_stamina
 	stamina_bar.max_value = flyer_profile.max_stamina
 	stamina_bar.value = stamina
 
 
-func _input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel"):
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+func _physics_process(delta: float) -> void:
+	time_since_flap = minf(time_since_flap + delta, 10.0)
+	update_flyer_state()
 
-# We assume the player wants to go where they're looking for now
+	if is_on_floor():
+		apply_ground_movement(
+				ground_input_controller.get_movement_input(),
+				ground_input_controller.is_jump_requested(),
+				delta
+		)
+	else:
+		# Flight input controller divines player intent
+		# The flight controller then tries to translate that into a physical state
+		# And then the physics engine determines what happens.
+		apply_flight_movement(flight_input_controller.get_flight_intent(), delta)
+
+	recover_stamina(delta)
+	update_visual_orientation(delta)
+	update_debug_readouts()
+	move_and_slide()
+
+
 func player_intended_direction() -> Vector3:
-	return -camera_pitch.global_basis.z
+	return flight_input_controller.current_flight_intent.desired_direction
 
-func inside_power_stroke() -> bool:
-	return time_since_flap < (
-			flyer_profile.flap_cycle_duration *
-			POWER_STROKE_PERCENTAGE
-	)
 
-# This triggers flapping - either continuous or the extra one. 
-func update_flap_plan(player_intended_direction: Vector3) -> void:
-	var movement_held := player_intended_direction.length() > 0.0
-	var space_held := Input.is_action_pressed("jump")
-	var space_pressed := Input.is_action_just_pressed("jump")
-	var wants_flap := movement_held or space_held
+func apply_ground_movement(
+		input_vector: Vector2,
+		jump_requested: bool,
+		delta: float
+) -> void:
+	flyer_state.requested_aerodynamic_force = Vector3.ZERO
+	flyer_state.target_aoa = 0.0
+	flyer_state.actual_aoa = move_toward(flyer_state.actual_aoa, 0.0, AOA_RESPONSE_RATE * delta)
 
-	if space_held:
-		current_flap_direction = Vector3.UP if not movement_held else (
-				Vector3.UP + player_intended_direction
+	var camera_forward := -camera_pitch.global_basis.z
+	var camera_right := camera_pitch.global_basis.x
+	camera_forward.y = 0.0
+	camera_right.y = 0.0
+	var ground_direction := (
+			camera_right.normalized() * input_vector.x
+			+ camera_forward.normalized() * -input_vector.y
 		).normalized()
-	elif movement_held:
-		current_flap_direction = player_intended_direction
+	velocity.x = ground_direction.x * GROUND_MOVE_SPEED
+	velocity.z = ground_direction.z * GROUND_MOVE_SPEED
+
+	if jump_requested:
+		velocity.y = JUMP_VELOCITY
+		time_since_flap = flyer_profile.flap_cycle_duration / 2.0
+
+	debug_lift(0.0)
+	debug_drag(0.0)
+
+
+func apply_flight_movement(intent: FlightIntent, delta: float) -> void:
+	var control := flight_controller.get_control_command(
+			intent,
+			flyer_state,
+			flyer_profile
+	)
+	flyer_state.requested_aerodynamic_force = control.requested_aerodynamic_force
+	update_body_and_wings(control, delta)
+	update_flap_plan(intent)
+
+	update_flyer_state()
+	flight_physics.integrate(flyer_state, flyer_profile, delta, physics_result)
+	velocity = physics_result.velocity
+	debug_lift((physics_result.lift_force / flyer_profile.base_mass).dot(Vector3.UP))
+	debug_drag(physics_result.get_drag_acceleration(flyer_profile))
+
+
+func update_body_and_wings(control: FlightControlCommand, delta: float) -> void:
+	flyer_state.body_direction = rotate_direction_toward(
+			flyer_state.body_direction,
+			control.target_body_direction,
+			BODY_DIRECTION_RESPONSE * flyer_profile.control_rate * delta
+	)
+	flyer_state.wing_lift_direction = rotate_direction_toward(
+			flyer_state.wing_lift_direction,
+			control.target_wing_lift_direction,
+			WING_DIRECTION_RESPONSE * flyer_profile.control_rate * delta
+	)
+	flyer_state.target_aoa = control.target_aoa
+	flyer_state.actual_aoa = move_toward(
+			flyer_state.actual_aoa,
+			flyer_state.target_aoa,
+			AOA_RESPONSE_RATE * flyer_profile.control_rate * delta
+	)
+	update_wing_surface_normal()
+
+
+func update_wing_surface_normal() -> void:
+	if flyer_state.airspeed < FlightPhysics.MIN_AIRSPEED:
+		flyer_state.wing_normal = flyer_state.wing_lift_direction
+		return
+
+	var flight_direction := flyer_state.air_relative_velocity / flyer_state.airspeed
+	var surface_normal := (
+			flyer_state.wing_lift_direction * cos(flyer_state.actual_aoa)
+			+ flight_direction * sin(flyer_state.actual_aoa)
+	)
+	if surface_normal.length_squared() < 0.0001:
+		flyer_state.wing_normal = flyer_state.wing_lift_direction
+		return
+	flyer_state.wing_normal = surface_normal.normalized()
+
+
+func update_flap_plan(intent: FlightIntent) -> void:
+	flyer_state.active_flap_direction = Vector3.ZERO
+	if intent.wants_upward_flap:
+		flyer_state.current_flap_direction = Vector3.UP if intent.maneuver_aggression <= 0.0 else (
+				Vector3.UP + intent.desired_direction
+			).normalized()
+	elif intent.wants_flap:
+		flyer_state.current_flap_direction = intent.desired_direction
+
+	if inside_power_stroke():
+		flyer_state.active_flap_direction = flyer_state.current_flap_direction
 
 	var regular_flap_due := time_since_flap >= flyer_profile.flap_cycle_duration
 	var extra_flap_requested := (
-			space_pressed
+			intent.requests_extra_flap
 			and not inside_power_stroke()
 			and not regular_flap_due
 	)
-
-	if not wants_flap or not (regular_flap_due or extra_flap_requested):
+	if not intent.wants_flap or not (regular_flap_due or extra_flap_requested):
 		return
 
 	var stamina_cost := FLAP_STAMINA_COST
 	if extra_flap_requested:
-		stamina_cost *= extra_flap_cost_multiplier
-
+		stamina_cost *= EXTRA_FLAP_COST_MULTIPLIER
 	if stamina < stamina_cost:
 		return
 
 	stamina -= stamina_cost
 	time_since_flap = 0.0
+	flyer_state.active_flap_direction = flyer_state.current_flap_direction
 	flap_visual()
 
-# This is the continual force delivered during the power stroke of the flap cycle.
-func apply_flap_force(delta: float) -> void:
-	if not inside_power_stroke() or current_flap_direction == Vector3.ZERO:
-		return
 
-	var speed := velocity.length()
-	var power_limited_force := flyer_profile.max_flap_force
-	if speed > 0.01:
-		power_limited_force = flyer_profile.max_flap_power / speed
+func inside_power_stroke() -> bool:
+	return time_since_flap < flyer_profile.flap_cycle_duration * POWER_STROKE_PERCENTAGE
 
-	var flap_force := minf(
-			flyer_profile.max_flap_force,
-			power_limited_force
-	)
-	var flap_acceleration := flap_force / flyer_profile.base_mass
-	velocity += current_flap_direction.normalized() * flap_acceleration * delta
 
-# LIFT, BANKING, TURNING
-func apply_aerodynamics(delta: float) -> void:
-	var air_velocity := velocity # later: velocity - wind_velocity
-	var airspeed := air_velocity.length()
+func update_flyer_state() -> void:
+	flyer_state.velocity = velocity
+	flyer_state.air_relative_velocity = velocity - flyer_state.air_velocity_world
+	flyer_state.airspeed = flyer_state.air_relative_velocity.length()
+	flyer_state.is_airborne = not is_on_floor()
 
-	if airspeed < 0.2:
-		requested_aerodynamic_force = Vector3.ZERO
-		debug_lift(0.0)
-		debug_drag(0.0)
-		return
 
-	#Where we trying to go?
-	var desired_velocity_direction := player_intended_direction()
-	# How hard can we go there?
-	var available_force := get_available_aerodynamic_force(airspeed)
-	#How hard SHOULD we go there?
-	var actual_force := get_requested_aerodynamic_force(
-			desired_velocity_direction,
-			available_force,
-			air_velocity,
-			delta
-	)
-	requested_aerodynamic_force = actual_force
-	# Apply both aerodynamic contributions, then report their resulting components.
-	var wing_acceleration := apply_wing_force(actual_force, delta)
-	var drag_acceleration := apply_induced_drag(
-			actual_force.length(),
-			airspeed,
-			delta
-	)
-	var aerodynamic_acceleration := wing_acceleration + drag_acceleration
-	debug_lift(aerodynamic_acceleration.dot(Vector3.UP))
-	debug_drag(maxf(
+func rotate_direction_toward(current: Vector3, target: Vector3, weight: float) -> Vector3:
+	if target.length_squared() < 0.0001:
+		return current.normalized()
+	if current.length_squared() < 0.0001:
+		return target.normalized()
+	return current.normalized().slerp(target.normalized(), clampf(weight, 0.0, 1.0))
+
+
+func recover_stamina(delta: float) -> void:
+	stamina = clampf(
+			stamina + flyer_profile.stamina_recovery * delta,
 			0.0,
-			aerodynamic_acceleration.dot(-air_velocity.normalized())
-	))
-
-
-
-
-# How much force can we provide? 
-func get_available_aerodynamic_force(airspeed: float) -> float:
-	#Maximum force
-	var airflow_force := (
-		flyer_profile.aerodynamic_authority
-		* airspeed
-		* airspeed
+			flyer_profile.max_stamina
 	)
-	#How much force can we actually provide without breaking our wings?
-	var structural_force := (
-		flyer_profile.structural_load_tolerance	* flyer_profile.base_mass
-	)
-	return minf(airflow_force, structural_force)
-
-# What is the direction of the vector that will take us towards where we want to go?
-func get_normal_force_direction(air_velocity: Vector3, player_intended_dir: Vector3) -> Vector3:
-	var flight_direction := air_velocity.normalized()
-	# Reminder - this takes the player intended direction and subtracts the projection of it along our existing velocity
-	# That leaves only the perpendicular component. We're not trying to speed up or slow down. 
-	var steering := (
-			player_intended_dir
-			- flight_direction
-			* player_intended_dir.dot(flight_direction)
-	)
-	if steering.length_squared() < 0.0001:
-		return Vector3.ZERO
-
-	return steering.normalized()
-
-# How much force do we actually want to use of our max possible? 
-# There's a tiny issue with this approach in that it computes the acceleration needed to take us to our 
-# desired direction in one second. In continuous physics this would be fine, but in discreet physics
-# the force can't be tangent to the start and end velocity, so it can impart energy.
-# We normalize the veloicty in apply_wing_force, but that can have a sublte change on the direction. 
-# Comparing to an angle based exact metric, I found it to make less than a tenth of newton of differece so
-# Practically not an issue. 
-func get_requested_aerodynamic_force(
-		desired_velocity_direction: Vector3,
-		available_force: float,
-		air_velocity: Vector3,
-		delta: float
-) -> Vector3:
-	var desired_force_direction := get_normal_force_direction(air_velocity, desired_velocity_direction)
-	if desired_force_direction == Vector3.ZERO:
-		return Vector3.ZERO
-
-	var desired_velocity := desired_velocity_direction.normalized() * air_velocity.length()
-	var required_velocity_change := desired_velocity - air_velocity
-	var required_force_magnitude := (
-			required_velocity_change.length() /
-			delta *
-			flyer_profile.base_mass
-	)
-	return desired_force_direction * minf(required_force_magnitude, available_force)
+	stamina_bar.value = stamina
 
 
-func apply_wing_force(force: Vector3, delta: float) -> Vector3:
-	var before_speed := velocity.length()
-	var acceleration := force / flyer_profile.base_mass
-	velocity += acceleration * delta
-	#Discreet correction 
-	# velocity = velocity.normalized() * before_speed
-	return acceleration
-
-
-func apply_induced_drag(wing_force: float,	airspeed: float, delta: float) -> Vector3:
-	if airspeed < 0.01:
-		return Vector3.ZERO
-
-	var induced_drag_force := (
-			INDUCED_DRAG_COEFFICIENT
-			* wing_force
-			* wing_force
-			/ (airspeed * airspeed * flyer_profile.aerodynamic_authority)
-	)
-
-	return apply_drag_force(induced_drag_force, delta)
-
-func apply_drag_force(force: float, delta: float) -> Vector3:
-	if velocity.length_squared() < 0.0001:
-		return Vector3.ZERO
-	var drag_direction := -velocity.normalized()
-	var acceleration := drag_direction * force / flyer_profile.base_mass
-	velocity += acceleration * delta
-	return acceleration
-
-
-
-
-
-
-
+func update_visual_orientation(delta: float) -> void:
+	var target_pitch := asin(clampf(flyer_state.body_direction.y, -1.0, 1.0))
+	var target_yaw := atan2(-flyer_state.body_direction.x, -flyer_state.body_direction.z)
+	visual_root.rotation.x = lerp_angle(visual_root.rotation.x, target_pitch, 8.0 * delta)
+	visual_root.rotation.y = lerp_angle(visual_root.rotation.y, target_yaw, 8.0 * delta)
 
 
 func flap_visual() -> void:
 	if flap_tween:
 		flap_tween.kill()
-
 	visual_root.scale = Vector3.ONE
-
 	flap_tween = create_tween()
-
-	flap_tween.tween_property(
-			visual_root,
-			"scale",
-			Vector3(1.25, 0.85, 1.25),
-			0.08
-	)
-
-	flap_tween.tween_property(
-			visual_root,
-			"scale",
-			Vector3.ONE,
-			0.18
-	)
+	flap_tween.tween_property(visual_root, "scale", Vector3(1.25, 0.85, 1.25), 0.08)
+	flap_tween.tween_property(visual_root, "scale", Vector3.ONE, 0.18)
 
 
-func debug_speed(velocity : Vector3):
-	speed_label.text = "Speed: %.1f m/s" % (velocity.length() * velocity.sign().z)
+func update_debug_readouts() -> void:
+	debug_speed(velocity)
+	debug_horizontal_speed(velocity)
+	debug_vertical_speed(velocity)
+	debug_total_energy()
+	debug_requested_aerodynamic_force()
 
 
-func debug_horizontal_speed(velocity: Vector3) -> void:
+func debug_speed(current_velocity: Vector3) -> void:
+	speed_label.text = "Speed: %.1f m/s" % (current_velocity.length() * current_velocity.sign().z)
+
+
+func debug_horizontal_speed(current_velocity: Vector3) -> void:
 	horizontal_speed_label.text = "Horizontal Speed: %.1f m/s" % Vector2(
-			velocity.x,
-			velocity.z
+			current_velocity.x,
+			current_velocity.z
 	).length()
 
 
-func debug_vertical_speed(velocity: Vector3) -> void:
-	vertical_speed_label.text = "Vertical Speed: %.1f m/s" % velocity.y
+func debug_vertical_speed(current_velocity: Vector3) -> void:
+	vertical_speed_label.text = "Vertical Speed: %.1f m/s" % current_velocity.y
 
 
 func debug_total_energy() -> void:
 	var kinetic_energy := 0.5 * flyer_profile.base_mass * velocity.length_squared()
-	var potential_energy := flyer_profile.base_mass * gravity * global_position.y
+	var potential_energy := flyer_profile.base_mass * FlightPhysics.GRAVITY * global_position.y
 	total_energy_label.text = "Total Energy: %.0f J" % (kinetic_energy + potential_energy)
 
 
 func debug_requested_aerodynamic_force() -> void:
-	requested_aerodynamic_force_label.text = "Requested Aero Force: %.0f N" % requested_aerodynamic_force.length()
+	requested_aerodynamic_force_label.text = "Requested Aero Force: %.0f N" % flyer_state.requested_aerodynamic_force.length()
 
 
-func debug_lift(lift_acceleration : float):
-	lift_label.text = "Lift: %.0f%% gravity" % (
-		lift_acceleration / gravity * 100.0
-	)
+func debug_lift(lift_acceleration: float) -> void:
+	lift_label.text = "Lift: %.0f%% gravity" % (lift_acceleration / FlightPhysics.GRAVITY * 100.0)
 
-func debug_drag(drag_acceleration : float):
+
+func debug_drag(drag_acceleration: float) -> void:
 	drag_label.text = "Drag: %.1f m/s²" % drag_acceleration
+
+
+func _input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE

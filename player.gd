@@ -34,6 +34,7 @@ var flap_tween: Tween
 @onready var requested_aerodynamic_force_label: Label = $CanvasLayer/DebugContainer/RequestedAerodynamicForceLabel
 @onready var lift_label: Label = $CanvasLayer/DebugContainer/LiftLabel
 @onready var drag_label: Label = $CanvasLayer/DebugContainer/DragLabel
+@onready var high_aoa_drag_label: Label = $CanvasLayer/DebugContainer/HighAoaDragLabel
 
 
 func _ready() -> void:
@@ -99,6 +100,7 @@ func apply_ground_movement(
 
 	debug_lift(0.0)
 	debug_drag(0.0)
+	debug_high_aoa_drag(Vector3.ZERO)
 
 
 func apply_flight_movement(intent: FlightIntent, delta: float) -> void:
@@ -116,6 +118,7 @@ func apply_flight_movement(intent: FlightIntent, delta: float) -> void:
 	velocity = physics_result.velocity
 	debug_lift((physics_result.lift_force / flyer_profile.base_mass).dot(Vector3.UP))
 	debug_drag(physics_result.get_drag_acceleration(flyer_profile))
+	debug_high_aoa_drag(physics_result.high_aoa_drag_vector)
 
 
 func update_body_and_wings(control: FlightControlCommand, delta: float) -> void:
@@ -270,6 +273,14 @@ func debug_lift(lift_acceleration: float) -> void:
 
 func debug_drag(drag_acceleration: float) -> void:
 	drag_label.text = "Drag: %.1f m/s²" % drag_acceleration
+
+
+func debug_high_aoa_drag(drag_force: Vector3) -> void:
+	var horizontal_force := Vector2(drag_force.x, drag_force.z).length()
+	high_aoa_drag_label.text = "High AoA drag: H %.0f N, V %.0f N" % [
+		horizontal_force,
+		drag_force.y
+	]
 
 
 func _input(event: InputEvent) -> void:

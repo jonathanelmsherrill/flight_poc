@@ -26,6 +26,7 @@ func integrate(
 	result.induced_drag_force = 0.0
 	result.parasite_drag_force = 0.0
 	result.high_aoa_drag_force = 0.0
+	result.high_aoa_drag_vector = Vector3.ZERO
 	var updated_velocity := flyer_state.velocity
 	updated_velocity.y -= GRAVITY * delta
 
@@ -67,6 +68,7 @@ func integrate(
 		)
 		result.parasite_drag_force = flyer_profile.parasite_drag_coefficient * airspeed * airspeed
 		result.high_aoa_drag_force = high_aoa_drag_force
+		result.high_aoa_drag_vector = high_aoa_drag_vector
 		updated_velocity = _apply_drag(
 			updated_velocity,
 			flyer_state.air_velocity_world,

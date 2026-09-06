@@ -83,6 +83,9 @@ layout_mode = 2
 [node name="DragLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=2101828789]
 layout_mode = 2
 
+[node name="HighAoaDragLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=197953085]
+layout_mode = 2
+
 [node name="FlightHud" type="Control" parent="CanvasLayer" unique_id=545056545 node_paths=PackedStringArray("player", "camera")]
 layout_mode = 3
 anchors_preset = 15

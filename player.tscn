@@ -3,6 +3,8 @@
 [ext_resource type="Script" uid="uid://drac0bmj6fty3" path="res://player.gd" id="1_4flbx"]
 [ext_resource type="Script" uid="uid://d1xe4swdgft31" path="res://player_camera.gd" id="2_i3pqv"]
 [ext_resource type="Script" uid="uid://721e6mb0owf4" path="res://flight_hud.gd" id="3_i3pqv"]
+[ext_resource type="Script" uid="uid://cktapro2uyc6t" path="res://wings.gd" id="4_wings"]
+[ext_resource type="Script" uid="uid://dcwcx5b7f5m5v" path="res://debug_force_arrow.gd" id="5_force_arrow"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_onrkg"]
 albedo_color = Color(0.9254902, 0.5882353, 0.9882353, 1)
@@ -24,6 +26,12 @@ script = ExtResource("1_4flbx")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="VisualRoot" unique_id=1592946998]
 material_override = SubResource("StandardMaterial3D_onrkg")
 mesh = SubResource("CapsuleMesh_sh265")
+
+[node name="Wings" type="Node3D" parent="." unique_id=959052645]
+script = ExtResource("4_wings")
+
+[node name="WingForceArrow" type="Node3D" parent="." unique_id=1121843157]
+script = ExtResource("5_force_arrow")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=389284192]
 shape = SubResource("CapsuleShape3D_4flbx")

@@ -91,7 +91,8 @@ func get_control_command(
 			intent,
 			requested_force.length(),
 			turn_angle,
-			airspeed,
+			air_velocity,
+			command.target_wing_lift_direction,
 			flyer_profile
 	)
 	return command
@@ -101,9 +102,11 @@ func choose_target_aoa(
 		intent: FlightIntent,
 		required_force: float,
 		turn_angle: float,
-		airspeed: float,
+		air_velocity: Vector3,
+		target_lift_direction: Vector3,
 		flyer_profile: FlyerProfile
 ) -> float:
+	var airspeed := air_velocity.length()
 	if airspeed < MIN_AIRSPEED:
 		return 0.0
 
@@ -140,11 +143,9 @@ func choose_target_aoa(
 		clampf(emergency_fraction * intent.maneuver_aggression, 0.0, 1.0)
 	)
 
-	# A maneuver can also be extreme because its requested direction is far from
-	# the current flight path. At full aggression, a 90 degree turn is a command
-	# to trade speed for direction: broadside the wings to the airflow. The force
-	# demand path still covers cases where low airspeed makes a smaller turn
-	# unattainable with useful lift alone.
+	# A force shortfall or a large direction change can request post-stall AoA.
+	# Do not turn that request into arbitrary braking: each candidate must still
+	# produce direct wing force toward the desired path and velocity correction.
 	var force_airbrake_fraction := 0.0
 	if requested_coefficient > maximum_lift_coefficient:
 		force_airbrake_fraction = inverse_lerp(
@@ -154,13 +155,92 @@ func choose_target_aoa(
 		)
 	var airbrake_fraction := maxf(force_airbrake_fraction, turn_airbrake_fraction)
 	if airbrake_fraction > 0.0:
-		target_aoa = lerpf(
+		var requested_post_stall_aoa := lerpf(
 			target_aoa,
 			FlightPhysics.MAX_AOA,
 			clampf(airbrake_fraction * intent.maneuver_aggression, 0.0, 1.0)
 		)
+		target_aoa = _get_highest_helpful_aoa(
+			target_aoa,
+			requested_post_stall_aoa,
+			intent.desired_direction,
+			air_velocity,
+			target_lift_direction,
+			flyer_profile
+		)
 
 	return target_aoa
+
+
+func _get_highest_helpful_aoa(
+		base_aoa: float,
+		requested_aoa: float,
+		desired_direction: Vector3,
+		air_velocity: Vector3,
+		target_lift_direction: Vector3,
+		flyer_profile: FlyerProfile
+) -> float:
+	var airspeed := air_velocity.length()
+	if airspeed < MIN_AIRSPEED or requested_aoa <= base_aoa:
+		return base_aoa
+
+	var desired_velocity_change := desired_direction.normalized() * airspeed - air_velocity
+	if desired_velocity_change.length_squared() < 0.0001:
+		return base_aoa
+
+	var highest_helpful_aoa := base_aoa
+	const CANDIDATE_COUNT := 12
+	for index in range(1, CANDIDATE_COUNT + 1):
+		var candidate_aoa := lerpf(
+			base_aoa,
+			requested_aoa,
+			float(index) / CANDIDATE_COUNT
+		)
+		var candidate_force := _get_predicted_direct_wing_force(
+			candidate_aoa,
+			air_velocity,
+			target_lift_direction,
+			flyer_profile
+		)
+		if candidate_force.dot(desired_direction) <= 0.0:
+			break
+		if candidate_force.dot(desired_velocity_change) <= 0.0:
+			break
+		highest_helpful_aoa = candidate_aoa
+
+	return highest_helpful_aoa
+
+
+func _get_predicted_direct_wing_force(
+		alpha: float,
+		air_velocity: Vector3,
+		target_lift_direction: Vector3,
+		flyer_profile: FlyerProfile
+) -> Vector3:
+	var airspeed := air_velocity.length()
+	if airspeed < MIN_AIRSPEED:
+		return Vector3.ZERO
+
+	var flight_direction := air_velocity / airspeed
+	var surface_normal := _safe_normalized(
+			target_lift_direction * cos(alpha) + flight_direction * sin(alpha),
+			target_lift_direction
+	)
+	var lift_direction := _orthogonal_complement(surface_normal, flight_direction)
+	var dynamic_force := flyer_profile.aerodynamic_authority * airspeed * airspeed
+	var lift_force := lift_direction * dynamic_force * FlightPhysics.get_lift_coefficient(alpha)
+	var normal_air_velocity := surface_normal * air_velocity.dot(surface_normal)
+	var plate_drag_force := Vector3.ZERO
+	if normal_air_velocity.length_squared() >= 0.0001:
+		plate_drag_force = -normal_air_velocity.normalized() * (
+			dynamic_force * FlightPhysics.get_high_aoa_drag_coefficient(alpha)
+		)
+
+	var direct_wing_force := lift_force + plate_drag_force
+	var structural_force_limit := flyer_profile.structural_load_tolerance * flyer_profile.base_mass
+	if direct_wing_force.length() > structural_force_limit:
+		direct_wing_force = direct_wing_force.normalized() * structural_force_limit
+	return direct_wing_force
 
 ## Also known as vector rejection. Remove all trace of reference_vector from direction,
 ## leaving a vector perpendicular to reference_vector (on a plane defined by direction and reference vector).

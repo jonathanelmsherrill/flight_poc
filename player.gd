@@ -11,6 +11,8 @@ const POWER_STROKE_PERCENTAGE := 0.2
 const BODY_DIRECTION_RESPONSE := 6.0
 const WING_DIRECTION_RESPONSE := 9.0
 const AOA_RESPONSE_RATE := deg_to_rad(240.0)
+const BODY_FULL_LEAN_SPEED := 20.0
+const VISUAL_SHOULDER_OFFSET := 0.65
 #const AOA_RESPONSE_RATE := deg_to_rad(360.0)
 
 var ground_input_controller := GroundInputController.new()
@@ -26,6 +28,8 @@ var flap_tween: Tween
 @onready var camera_pitch: Node3D = $CameraPivot/CameraPitch
 @onready var stamina_bar: ProgressBar = $CanvasLayer/ProgressBar
 @onready var visual_root: Node3D = $VisualRoot
+@onready var wings: Wings = $Wings
+@onready var wing_force_arrow: DebugForceArrow = $WingForceArrow
 
 @onready var speed_label: Label = $CanvasLayer/DebugContainer/SpeedLabel
 @onready var horizontal_speed_label: Label = $CanvasLayer/DebugContainer/HorizontalSpeedLabel
@@ -101,6 +105,7 @@ func apply_ground_movement(
 	debug_lift(0.0)
 	debug_drag(0.0)
 	debug_high_aoa_drag(Vector3.ZERO)
+	physics_result.wing_aerodynamic_force = Vector3.ZERO
 
 
 func apply_flight_movement(intent: FlightIntent, delta: float) -> void:
@@ -219,10 +224,33 @@ func recover_stamina(delta: float) -> void:
 
 
 func update_visual_orientation(delta: float) -> void:
-	var target_pitch := asin(clampf(flyer_state.body_direction.y, -1.0, 1.0))
-	var target_yaw := atan2(-flyer_state.body_direction.x, -flyer_state.body_direction.z)
-	visual_root.rotation.x = lerp_angle(visual_root.rotation.x, target_pitch, 8.0 * delta)
-	visual_root.rotation.y = lerp_angle(visual_root.rotation.y, target_yaw, 8.0 * delta)
+	var air_velocity := velocity - flyer_state.air_velocity_world
+	if air_velocity.length_squared() >= 0.0001:
+		var lean_fraction := smoothstep(0.0, BODY_FULL_LEAN_SPEED, air_velocity.length())
+		var body_axis := Vector3.UP.slerp(air_velocity.normalized(), lean_fraction)
+		var target_basis := _basis_with_local_up(body_axis)
+		visual_root.basis = visual_root.basis.slerp(
+				target_basis,
+				clampf(8.0 * delta, 0.0, 1.0)
+		)
+	var shoulder_position := visual_root.global_position + (
+			visual_root.global_basis.y * VISUAL_SHOULDER_OFFSET
+	)
+	wings.update_aerodynamic_pose(
+			air_velocity,
+		flyer_state.wing_normal,
+		shoulder_position
+	)
+	wing_force_arrow.show_force(physics_result.wing_aerodynamic_force, shoulder_position)
+
+
+func _basis_with_local_up(up_direction: Vector3) -> Basis:
+	var reference_forward := Vector3.FORWARD
+	if absf(reference_forward.dot(up_direction)) > 0.95:
+		reference_forward = Vector3.RIGHT
+	var right := reference_forward.cross(up_direction).normalized()
+	var back := right.cross(up_direction).normalized()
+	return Basis(right, up_direction, back)
 
 
 func flap_visual() -> void:

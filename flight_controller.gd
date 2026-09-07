@@ -74,9 +74,9 @@ func get_control_command(
 			intent.maneuver_aggression
 	)
 	var turn_angle := acos(clampf(flight_direction.dot(desired_direction), -1.0, 1.0))
-	# Pick the desired rate - either the max rate or the 
+	# Pick the desired rate - aim for the min_response_time unless it exceeds the max turn rate. 
 	var desired_turn_rate := minf(turn_angle / min_turn_response_time, max_turn_rate)
-	# To turn desired_turn_rate radians/second demands centripetal acceleration of v*turn_rate
+	# The centripetal acceleration described above.
 	var steering_force := steering_direction * (
 			flyer_profile.base_mass * airspeed * desired_turn_rate
 	)
@@ -90,14 +90,15 @@ func get_control_command(
 	command.target_aoa = choose_target_aoa(
 			intent,
 			requested_force.length(),
-			turn_angle,
+			turn_angle, #I bet 5 rubalinks this isn't needed.
 			air_velocity,
 			command.target_wing_lift_direction,
 			flyer_profile
 	)
 	return command
 
-
+## The angle of attack defines how much lift our wings give. At 0 (effective; ignoring how you get it, like chamfer or Bernoulli)
+## wings provide zero lift.  
 func choose_target_aoa(
 		intent: FlightIntent,
 		required_force: float,
@@ -110,48 +111,52 @@ func choose_target_aoa(
 	if airspeed < MIN_AIRSPEED:
 		return 0.0
 
-	var dynamic_force := flyer_profile.aerodynamic_authority * airspeed * airspeed
-	if dynamic_force <= 0.001:
+	## Our base force factor - multiply by aoe lift factor to get actual lift. 
+	var wing_force_base_factor := flyer_profile.aerodynamic_authority * airspeed * airspeed
+	if wing_force_base_factor <= 0.001:
 		return 0.0
-
+	# What aoe lift multiple do we need?
+	var necessary_lift_multiple := required_force / wing_force_base_factor
+	var required_aoa := FlightPhysics.get_attached_aoa_for_lift_coefficient(necessary_lift_multiple)
+	# If a reasonable ask just use the necessary AOA.
+	if required_aoa <= FlightPhysics.NORMAL_TRIM_MAX_AOA and turn_angle == 0.0:
+		return required_aoa
+	# If unreasonable and we don't want any trouble, still stick to max normal trim. 
+	if intent.maneuver_aggression <= 0.0:
+		return FlightPhysics.NORMAL_TRIM_MAX_AOA
+	
+	# This is just lift slope * alpha before separation for our arbitrary "normal trim" 
 	var normal_trim_coefficient := FlightPhysics.get_lift_coefficient(
 			FlightPhysics.NORMAL_TRIM_MAX_AOA
 	)
-	var requested_coefficient := required_force / dynamic_force
-	var turn_airbrake_fraction := clampf(turn_angle / (PI * 0.5), 0.0, 1.0)
-	var normal_trim_aoa := FlightPhysics.get_attached_aoa_for_lift_coefficient(
-			minf(requested_coefficient, normal_trim_coefficient)
-	)
-
-	# Normal flight never silently spends the emergency lift margin. A stronger
-	# request can extend from efficient trim through maximum useful lift.
-	if requested_coefficient <= normal_trim_coefficient and turn_airbrake_fraction <= 0.0:
-		return normal_trim_aoa
-
-	if intent.maneuver_aggression <= 0.0:
-		return FlightPhysics.NORMAL_TRIM_MAX_AOA
-
+	
 	var maximum_lift_coefficient := FlightPhysics.get_maximum_useful_lift_coefficient()
+	# WtF? Get a fraction from 0 to 1 based on how close necessary is to maximum?
 	var emergency_fraction := inverse_lerp(
 			normal_trim_coefficient,
 			maximum_lift_coefficient,
-			requested_coefficient
+			necessary_lift_multiple
 	)
+	# Then get the Aoa Based on that... scaled to maneuver aggression. 1 means use the maximum possible lift, 0 never use any. okay I get it. 
 	var target_aoa := lerpf(
 		FlightPhysics.NORMAL_TRIM_MAX_AOA,
 		FlightPhysics.get_maximum_useful_lift_aoa(),
 		clampf(emergency_fraction * intent.maneuver_aggression, 0.0, 1.0)
 	)
 
+
+	# I'm convinced we don't need this, but 0-1 as we go from 0-90 degree turn. 
+	var turn_airbrake_fraction := clampf(turn_angle / (PI * 0.5), 0.0, 1.0)
+	
 	# A force shortfall or a large direction change can request post-stall AoA.
 	# Do not turn that request into arbitrary braking: each candidate must still
 	# produce direct wing force toward the desired path and velocity correction.
 	var force_airbrake_fraction := 0.0
-	if requested_coefficient > maximum_lift_coefficient:
+	if necessary_lift_multiple > maximum_lift_coefficient:
 		force_airbrake_fraction = inverse_lerp(
 			maximum_lift_coefficient,
 			maximum_lift_coefficient * 2.0,
-			requested_coefficient
+			necessary_lift_multiple
 		)
 	var airbrake_fraction := maxf(force_airbrake_fraction, turn_airbrake_fraction)
 	if airbrake_fraction > 0.0:

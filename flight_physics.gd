@@ -3,11 +3,12 @@ extends RefCounted
 
 ## Aerodynamic coefficient tuning. Aerodynamic authority already includes the
 ## wing-area and air-density abstraction.
-const GRAVITY := 9.8 #m/s^2
+const GRAVITY := 9.8 #m/s^2 
 const LIFT_SLOPE := 4.0 # This is the ratio of lift to angle of attack. 1 radian = ~ 60 degrees, so if the stall onset is ~22 degrees, our max lift is 1.33 what it was before.
+#const FULL_AUTHORITY_AOA = 1/LIFT_SLOPE # Radians. This is like 14 degrees if lift slope is 4, meaning our air authority is a bit lower than we're used to. 
 const NORMAL_TRIM_MAX_AOA := deg_to_rad(12.0)
-const STALL_ONSET_AOA := deg_to_rad(22.0) 
-const FULL_SEPARATION_AOA := deg_to_rad(55.0)
+const STALL_ONSET_AOA := deg_to_rad(22.0)  #This would be more like 9-14 degrees in reality I think. 
+const FULL_SEPARATION_AOA := deg_to_rad(55.0) # More like 15-18 degrees
 const MAX_AOA := deg_to_rad(90.0)
 const PLATE_LIFT_COEFFICIENT := 1.6
 const PLATE_DRAG_COEFFICIENT := 1.5
@@ -108,7 +109,7 @@ static func get_lift_coefficient(alpha: float) -> float:
 	var absolute_alpha := clampf(absf(alpha), 0.0, MAX_AOA)
 	var attached_flow_lift := LIFT_SLOPE * absolute_alpha
 	var plate_lift := PLATE_LIFT_COEFFICIENT * sin(absolute_alpha) * cos(absolute_alpha)
-	var separation := smoothstep(STALL_ONSET_AOA, FULL_SEPARATION_AOA, absolute_alpha)
+	var separation := smoothstep(STALL_ONSET_AOA, FULL_SEPARATION_AOA, absolute_alpha) 
 	return lerpf(attached_flow_lift, plate_lift, separation)
 
 

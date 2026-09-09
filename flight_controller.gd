@@ -111,7 +111,8 @@ func choose_target_aoa(
 	if airspeed < MIN_AIRSPEED:
 		return 0.0
 
-	## Our base force factor - multiply by aoe lift factor to get actual lift. 
+	# ------------- Typical angle of attack range -----------------
+	# Our base force factor - multiply by aoe lift factor to get actual lift. 
 	var wing_force_base_factor := flyer_profile.aerodynamic_authority * airspeed * airspeed
 	if wing_force_base_factor <= 0.001:
 		return 0.0
@@ -124,26 +125,29 @@ func choose_target_aoa(
 	# If unreasonable and we don't want any trouble, still stick to max normal trim. 
 	if intent.maneuver_aggression <= 0.0:
 		return FlightPhysics.NORMAL_TRIM_MAX_AOA
-	
-	# This is just lift slope * alpha before separation for our arbitrary "normal trim" 
-	var normal_trim_coefficient := FlightPhysics.get_lift_coefficient(
-			FlightPhysics.NORMAL_TRIM_MAX_AOA
-	)
-	
-	var maximum_lift_coefficient := FlightPhysics.get_maximum_useful_lift_coefficient()
-	# WtF? Get a fraction from 0 to 1 based on how close necessary is to maximum?
-	var emergency_fraction := inverse_lerp(
-			normal_trim_coefficient,
-			maximum_lift_coefficient,
-			necessary_lift_multiple
-	)
-	# Then get the Aoa Based on that... scaled to maneuver aggression. 1 means use the maximum possible lift, 0 never use any. okay I get it. 
-	var target_aoa := lerpf(
+	## return FlightPhysics.NORMAL_TRIM_MAX_AOA 
+	# ^^ This gives good glides and decent drag but doesn't allow air braaks and forces glides we dont want.
+	# We end up around 9 m/s with drag of 1 ish.
+		
+	# ---------- 'Aggressive' AoA' --------------
+	var max_allowed_aoa := inverse_lerp(
 		FlightPhysics.NORMAL_TRIM_MAX_AOA,
-		FlightPhysics.get_maximum_useful_lift_aoa(),
-		clampf(emergency_fraction * intent.maneuver_aggression, 0.0, 1.0)
+		FlightPhysics.get_maximum_possible_lift_coefficient(),
+		intent.maneuver_aggression
 	)
-
+	return minf(required_aoa, max_allowed_aoa)
+	## ^^ This gives back original behavior. Oddly enough we just burn a little more velocity but the end bevarior is the same 
+	## And the wings flip over backwards?? Somethihng odd here.
+	var target_aoa := required_aoa
+	
+	# Scale the excess AoA back by aggression, where aggression is like the % of maximum lift (at all drag cost)
+	
+	
+	# We will scale from the normal trim AOA to the maximum useful AOA based on 'aggression'.
+	# AoA->Lift is only linear until we approach airflow-separation point, so 
+	# we briefly scale 
+	var normal_trim_lift_coefficient := FlightPhysics.get_lift_coefficient(FlightPhysics.NORMAL_TRIM_MAX_AOA)
+	var maximum_lift_coefficient := FlightPhysics.get_maximum_possible_lift_coefficient()
 
 	# I'm convinced we don't need this, but 0-1 as we go from 0-90 degree turn. 
 	var turn_airbrake_fraction := clampf(turn_angle / (PI * 0.5), 0.0, 1.0)
@@ -176,6 +180,7 @@ func choose_target_aoa(
 
 	return target_aoa
 
+	
 
 func _get_highest_helpful_aoa(
 		base_aoa: float,

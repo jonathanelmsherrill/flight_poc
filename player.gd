@@ -39,6 +39,7 @@ var flap_tween: Tween
 @onready var lift_label: Label = $CanvasLayer/DebugContainer/LiftLabel
 @onready var drag_label: Label = $CanvasLayer/DebugContainer/DragLabel
 @onready var high_aoa_drag_label: Label = $CanvasLayer/DebugContainer/HighAoaDragLabel
+@onready var aoa_label: Label = $CanvasLayer/DebugContainer.get_node_or_null("AoaLabel") as Label
 
 
 func _ready() -> void:
@@ -50,6 +51,14 @@ func _ready() -> void:
 	stamina = flyer_profile.max_stamina
 	stamina_bar.max_value = flyer_profile.max_stamina
 	stamina_bar.value = stamina
+
+## I don't use this but I should probably do this in a debug class insttead of hand adding a bunch of lables later. Leaving as an example.
+func ensure_aoa_label() -> void:
+	if aoa_label:
+		return
+	aoa_label = Label.new()
+	aoa_label.name = "AoaLabel"
+	$CanvasLayer/DebugContainer.add_child(aoa_label)
 
 
 func _physics_process(delta: float) -> void:
@@ -266,6 +275,7 @@ func update_debug_readouts() -> void:
 	debug_speed(velocity)
 	debug_horizontal_speed(velocity)
 	debug_vertical_speed(velocity)
+	debug_aoa()
 	debug_total_energy()
 	debug_requested_aerodynamic_force()
 
@@ -283,6 +293,10 @@ func debug_horizontal_speed(current_velocity: Vector3) -> void:
 
 func debug_vertical_speed(current_velocity: Vector3) -> void:
 	vertical_speed_label.text = "Vertical Speed: %.1f m/s" % current_velocity.y
+
+
+func debug_aoa() -> void:
+	aoa_label.text = "AoA: %.1f°" % rad_to_deg(flyer_state.actual_aoa)
 
 
 func debug_total_energy() -> void:

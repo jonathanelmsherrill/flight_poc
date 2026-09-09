@@ -76,6 +76,9 @@ layout_mode = 2
 [node name="VerticalSpeedLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=496292676]
 layout_mode = 2
 
+[node name="AoaLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=1768424989]
+layout_mode = 2
+
 [node name="TotalEnergyLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=1682315921]
 layout_mode = 2
 

@@ -120,12 +120,12 @@ static func get_high_aoa_drag_coefficient(alpha: float) -> float:
 	return plate_drag * separation
 
 
-static func get_maximum_useful_lift_aoa() -> float:
+static func get_maximum_lift_aoa() -> float:
 	return deg_to_rad(30.0)
 
-
-static func get_maximum_useful_lift_coefficient() -> float:
-	return get_lift_coefficient(get_maximum_useful_lift_aoa())
+## What's the maxumum lift we can get from Aoa? (A flat wing has 0 lift, a plate has 0 lift, there is a max in between)
+static func get_maximum_possible_lift_coefficient() -> float:
+	return get_lift_coefficient(get_maximum_lift_aoa())
 
 
 static func get_attached_aoa_for_lift_coefficient(lift_coefficient: float) -> float:

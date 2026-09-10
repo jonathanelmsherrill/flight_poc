@@ -4,11 +4,11 @@ extends RefCounted
 ## Aerodynamic coefficient tuning. Aerodynamic authority already includes the
 ## wing-area and air-density abstraction.
 const GRAVITY := 9.8 #m/s^2 
-const LIFT_SLOPE := 4.0 # This is the ratio of lift to angle of attack. 1 radian = ~ 60 degrees, so if the stall onset is ~22 degrees, our max lift is 1.33 what it was before.
+const LIFT_SLOPE := 5.0 # This is the ratio of lift to angle of attack. 1 radian = ~ 60 degrees, so if the stall onset is ~22 degrees, our max lift is 1.33 what it was before.
 #const FULL_AUTHORITY_AOA = 1/LIFT_SLOPE # Radians. This is like 14 degrees if lift slope is 4, meaning our air authority is a bit lower than we're used to. 
-const NORMAL_TRIM_MAX_AOA := deg_to_rad(12.0)
-const STALL_ONSET_AOA := deg_to_rad(22.0)  #This would be more like 9-14 degrees in reality I think. 
-const FULL_SEPARATION_AOA := deg_to_rad(55.0) # More like 15-18 degrees
+const NORMAL_TRIM_MAX_AOA := deg_to_rad(6.0)
+const STALL_ONSET_AOA := deg_to_rad(15.0)  #This would be more like 9-14 degrees in reality I think. 
+const FULL_SEPARATION_AOA := deg_to_rad(25.0) # More like 15-18 degrees
 const MAX_AOA := deg_to_rad(90.0)
 const PLATE_LIFT_COEFFICIENT := 1.6
 const PLATE_DRAG_COEFFICIENT := 1.5
@@ -25,6 +25,7 @@ func integrate(
 	result.velocity = flyer_state.velocity
 	result.lift_force = Vector3.ZERO
 	result.induced_drag_force = 0.0
+	result.drag_force = Vector3.ZERO
 	result.parasite_drag_force = 0.0
 	result.high_aoa_drag_force = 0.0
 	result.high_aoa_drag_vector = Vector3.ZERO
@@ -53,6 +54,7 @@ func integrate(
 			high_aoa_drag_vector *= structural_scale
 			lift_force_magnitude = lift_force.length()
 			high_aoa_drag_force = high_aoa_drag_vector.length()
+		direct_wing_force = (lift_force + high_aoa_drag_vector).length()
 
 		result.lift_force = lift_force
 		updated_velocity = _apply_energy_neutral_lift(
@@ -64,7 +66,7 @@ func integrate(
 			delta
 		)
 		result.induced_drag_force = get_induced_drag_force(
-			lift_force_magnitude,
+			direct_wing_force,
 			airspeed,
 			flyer_profile.aerodynamic_authority
 		)
@@ -74,8 +76,14 @@ func integrate(
 		var induced_drag_vector := _get_airflow_drag_force(
 				updated_velocity,
 				flyer_state.air_velocity_world,
-				result.induced_drag_force
+			result.induced_drag_force
 		)
+		var parasite_drag_vector := _get_airflow_drag_force(
+				updated_velocity,
+				flyer_state.air_velocity_world,
+				result.parasite_drag_force
+		)
+		result.drag_force = induced_drag_vector + parasite_drag_vector + high_aoa_drag_vector
 		result.wing_aerodynamic_force = (
 				result.lift_force
 				+ high_aoa_drag_vector

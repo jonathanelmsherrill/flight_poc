@@ -27,7 +27,7 @@ extends Resource
 # Which is woefully incapable of keeping a 45 kg human in the air.   
 # Thus our fantasy winged flying human needs to be closer to 5.  
 # Doubling it halves induced drag and doubles lift. 12 lets you turn on a dime.
-@export var aerodynamic_authority := 5
+@export var aerodynamic_authority := 6
 
 # Maximum aerodynamic acceleration the wings/body can physically tolerate.
 # At high speed this becomes the limiting factor and forces tighter wing trim.

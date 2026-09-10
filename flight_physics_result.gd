@@ -5,6 +5,7 @@ extends RefCounted
 var velocity := Vector3.ZERO
 var lift_force := Vector3.ZERO
 var induced_drag_force := 0.0
+var drag_force := Vector3.ZERO
 var parasite_drag_force := 0.0
 var high_aoa_drag_force := 0.0
 var high_aoa_drag_vector := Vector3.ZERO

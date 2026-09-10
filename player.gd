@@ -11,7 +11,6 @@ const POWER_STROKE_PERCENTAGE := 0.2
 const BODY_DIRECTION_RESPONSE := 6.0
 const WING_DIRECTION_RESPONSE := 9.0
 const AOA_RESPONSE_RATE := deg_to_rad(240.0)
-const BODY_FULL_LEAN_SPEED := 20.0
 const VISUAL_SHOULDER_OFFSET := 0.65
 #const AOA_RESPONSE_RATE := deg_to_rad(360.0)
 
@@ -21,6 +20,7 @@ var flight_controller := FlightController.new()
 var flight_physics := FlightPhysics.new()
 var flyer_state := FlyerState.new()
 var physics_result := FlightPhysicsResult.new()
+var flight_debug: FlightDebug
 var time_since_flap := 10.0
 var stamina := 0.0
 var flap_tween: Tween
@@ -31,17 +31,6 @@ var flap_tween: Tween
 @onready var wings: Wings = $Wings
 @onready var wing_force_arrow: DebugForceArrow = $WingForceArrow
 
-@onready var speed_label: Label = $CanvasLayer/DebugContainer/SpeedLabel
-@onready var horizontal_speed_label: Label = $CanvasLayer/DebugContainer/HorizontalSpeedLabel
-@onready var vertical_speed_label: Label = $CanvasLayer/DebugContainer/VerticalSpeedLabel
-@onready var total_energy_label: Label = $CanvasLayer/DebugContainer/TotalEnergyLabel
-@onready var requested_aerodynamic_force_label: Label = $CanvasLayer/DebugContainer/RequestedAerodynamicForceLabel
-@onready var lift_label: Label = $CanvasLayer/DebugContainer/LiftLabel
-@onready var drag_label: Label = $CanvasLayer/DebugContainer/DragLabel
-@onready var high_aoa_drag_label: Label = $CanvasLayer/DebugContainer/HighAoaDragLabel
-@onready var aoa_label: Label = $CanvasLayer/DebugContainer.get_node_or_null("AoaLabel") as Label
-
-
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	flight_input_controller.steering_frame = camera_pitch
@@ -51,14 +40,7 @@ func _ready() -> void:
 	stamina = flyer_profile.max_stamina
 	stamina_bar.max_value = flyer_profile.max_stamina
 	stamina_bar.value = stamina
-
-## I don't use this but I should probably do this in a debug class insttead of hand adding a bunch of lables later. Leaving as an example.
-func ensure_aoa_label() -> void:
-	if aoa_label:
-		return
-	aoa_label = Label.new()
-	aoa_label.name = "AoaLabel"
-	$CanvasLayer/DebugContainer.add_child(aoa_label)
+	flight_debug = FlightDebug.new($CanvasLayer/DebugContainer)
 
 
 func _physics_process(delta: float) -> void:
@@ -75,7 +57,7 @@ func _physics_process(delta: float) -> void:
 		# Flight input controller divines player intent
 		# The flight controller then tries to translate that into a physical state
 		# And then the physics engine determines what happens.
-		apply_flight_movement(flight_input_controller.get_flight_intent(), delta)
+		apply_flight_movement(flight_input_controller.get_flight_intent(velocity), delta)
 
 	recover_stamina(delta)
 	update_visual_orientation(delta)
@@ -111,9 +93,12 @@ func apply_ground_movement(
 		velocity.y = JUMP_VELOCITY
 		time_since_flap = flyer_profile.flap_cycle_duration / 2.0
 
-	debug_lift(0.0)
-	debug_drag(0.0)
-	debug_high_aoa_drag(Vector3.ZERO)
+	physics_result.lift_force = Vector3.ZERO
+	physics_result.induced_drag_force = 0.0
+	physics_result.drag_force = Vector3.ZERO
+	physics_result.parasite_drag_force = 0.0
+	physics_result.high_aoa_drag_force = 0.0
+	physics_result.high_aoa_drag_vector = Vector3.ZERO
 	physics_result.wing_aerodynamic_force = Vector3.ZERO
 
 
@@ -130,9 +115,6 @@ func apply_flight_movement(intent: FlightIntent, delta: float) -> void:
 	update_flyer_state()
 	flight_physics.integrate(flyer_state, flyer_profile, delta, physics_result)
 	velocity = physics_result.velocity
-	debug_lift((physics_result.lift_force / flyer_profile.base_mass).dot(Vector3.UP))
-	debug_drag(physics_result.get_drag_acceleration(flyer_profile))
-	debug_high_aoa_drag(physics_result.high_aoa_drag_vector)
 
 
 func update_body_and_wings(control: FlightControlCommand, delta: float) -> void:
@@ -232,16 +214,14 @@ func recover_stamina(delta: float) -> void:
 	stamina_bar.value = stamina
 
 
-func update_visual_orientation(delta: float) -> void:
+func update_visual_orientation(_delta: float) -> void:
 	var air_velocity := velocity - flyer_state.air_velocity_world
-	if air_velocity.length_squared() >= 0.0001:
-		var lean_fraction := smoothstep(0.0, BODY_FULL_LEAN_SPEED, air_velocity.length())
-		var body_axis := Vector3.UP.slerp(air_velocity.normalized(), lean_fraction)
-		var target_basis := _basis_with_local_up(body_axis)
-		visual_root.basis = visual_root.basis.slerp(
-				target_basis,
-				clampf(8.0 * delta, 0.0, 1.0)
-		)
+	# The pill's local up axis follows its travel direction in flight. Walking
+	# retains the upright pose so it reads as a standing character.
+	if flyer_state.is_airborne and air_velocity.length_squared() >= 0.0001:
+		visual_root.basis = _basis_with_local_up(air_velocity.normalized())
+	elif not flyer_state.is_airborne:
+		visual_root.basis = _basis_with_local_up(Vector3.UP)
 	var shoulder_position := visual_root.global_position + (
 			visual_root.global_basis.y * VISUAL_SHOULDER_OFFSET
 	)
@@ -272,57 +252,30 @@ func flap_visual() -> void:
 
 
 func update_debug_readouts() -> void:
-	debug_speed(velocity)
-	debug_horizontal_speed(velocity)
-	debug_vertical_speed(velocity)
-	debug_aoa()
-	debug_total_energy()
-	debug_requested_aerodynamic_force()
-
-
-func debug_speed(current_velocity: Vector3) -> void:
-	speed_label.text = "Speed: %.1f m/s" % (current_velocity.length() * current_velocity.sign().z)
-
-
-func debug_horizontal_speed(current_velocity: Vector3) -> void:
-	horizontal_speed_label.text = "Horizontal Speed: %.1f m/s" % Vector2(
-			current_velocity.x,
-			current_velocity.z
-	).length()
-
-
-func debug_vertical_speed(current_velocity: Vector3) -> void:
-	vertical_speed_label.text = "Vertical Speed: %.1f m/s" % current_velocity.y
-
-
-func debug_aoa() -> void:
-	aoa_label.text = "AoA: %.1f°" % rad_to_deg(flyer_state.actual_aoa)
-
-
-func debug_total_energy() -> void:
+	flight_debug.submit("SpeedLabel", "Speed: %.1f m/s" % (velocity.length() * velocity.sign().z))
+	flight_debug.submit("HorizontalSpeedLabel", "Horizontal Speed: %.1f m/s" % Vector2(
+			velocity.x,
+			velocity.z
+	).length())
+	flight_debug.submit("VerticalSpeedLabel", "Vertical Speed: %.1f m/s" % velocity.y)
+	flight_debug.submit("AoaLabel", "AoA: %.1f°" % rad_to_deg(flyer_state.actual_aoa))
 	var kinetic_energy := 0.5 * flyer_profile.base_mass * velocity.length_squared()
 	var potential_energy := flyer_profile.base_mass * FlightPhysics.GRAVITY * global_position.y
-	total_energy_label.text = "Total Energy: %.0f J" % (kinetic_energy + potential_energy)
-
-
-func debug_requested_aerodynamic_force() -> void:
-	requested_aerodynamic_force_label.text = "Requested Aero Force: %.0f N" % flyer_state.requested_aerodynamic_force.length()
-
-
-func debug_lift(lift_acceleration: float) -> void:
-	lift_label.text = "Lift: %.0f%% gravity" % (lift_acceleration / FlightPhysics.GRAVITY * 100.0)
-
-
-func debug_drag(drag_acceleration: float) -> void:
-	drag_label.text = "Drag: %.1f m/s²" % drag_acceleration
-
-
-func debug_high_aoa_drag(drag_force: Vector3) -> void:
-	var horizontal_force := Vector2(drag_force.x, drag_force.z).length()
-	high_aoa_drag_label.text = "High AoA drag: H %.0f N, V %.0f N" % [
-		horizontal_force,
-		drag_force.y
-	]
+	flight_debug.submit("TotalEnergyLabel", "Total Energy: %.0f J" % (kinetic_energy + potential_energy))
+	flight_debug.submit("RequestedAerodynamicForceLabel", "Requested Aero Force: %.0f N" % flyer_state.requested_aerodynamic_force.length())
+	var lift_acceleration := (physics_result.lift_force / flyer_profile.base_mass).dot(Vector3.UP)
+	flight_debug.submit("LiftLabel", "Lift: %.0f%% gravity" % (lift_acceleration / FlightPhysics.GRAVITY * 100.0))
+	flight_debug.submit("DragLabel", "Drag: %.1f m/s²" % physics_result.get_drag_acceleration(flyer_profile))
+	var high_aoa_horizontal_force := Vector2(
+			physics_result.high_aoa_drag_vector.x,
+			physics_result.high_aoa_drag_vector.z
+	).length()
+	flight_debug.submit("HighAoaDragLabel", "High AoA drag: H %.0f N, V %.0f N" % [
+		high_aoa_horizontal_force,
+		physics_result.high_aoa_drag_vector.y
+	])
+	flight_debug.submit("LiftVelocityDotLabel", "Lift force dot velocity: %.1f W" % physics_result.lift_force.dot(velocity))
+	flight_debug.submit("DragVelocityDotLabel", "Drag force dot velocity: %.1f W" % physics_result.drag_force.dot(velocity))
 
 
 func _input(event: InputEvent) -> void:

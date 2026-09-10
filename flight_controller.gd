@@ -120,7 +120,7 @@ func choose_target_aoa(
 	var necessary_lift_multiple := required_force / wing_force_base_factor
 	var required_aoa := FlightPhysics.get_attached_aoa_for_lift_coefficient(necessary_lift_multiple)
 	# If a reasonable ask just use the necessary AOA.
-	if required_aoa <= FlightPhysics.NORMAL_TRIM_MAX_AOA and turn_angle == 0.0:
+	if required_aoa <= FlightPhysics.NORMAL_TRIM_MAX_AOA:
 		return required_aoa
 	# If unreasonable and we don't want any trouble, still stick to max normal trim. 
 	if intent.maneuver_aggression <= 0.0:

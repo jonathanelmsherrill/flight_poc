@@ -29,7 +29,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	var intent_direction := player.player_intended_direction()
 	var player_velocity := player.velocity
-	var requested_aerodynamic_force := player.flyer_state.requested_aerodynamic_force
+	var requested_aerodynamic_force := player.flyer_state.info_requested_aerodynamic_force
 	place_reticle(desired_marker,direction_to_screen(intent_direction))
 	place_reticle(velocity_marker, direction_to_screen(player_velocity))
 	place_reticle(

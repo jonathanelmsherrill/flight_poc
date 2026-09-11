@@ -39,6 +39,32 @@ extends Resource
 # Lower values mean better streamlining and less speed loss in normal flight.
 @export var parasite_drag_coefficient := 0.008
 
+## Runtime performance data calculated by FlightPhysics when the player starts.
+var gravity_fighting_speed_by_aoa: Dictionary[float, float] = {}
+var optimal_lift_to_drag_aoa := 0.0
+
+
+func get_gravity_fighting_speed(aoa: float) -> float:
+	if gravity_fighting_speed_by_aoa.is_empty():
+		return 0.0
+	var lower_aoa := gravity_fighting_speed_by_aoa.keys().min() as float
+	var upper_aoa := gravity_fighting_speed_by_aoa.keys().max() as float
+	if aoa < lower_aoa:
+		return 0.0
+	var clamped_aoa := clampf(aoa, lower_aoa, upper_aoa)
+	var lower_speed := gravity_fighting_speed_by_aoa[lower_aoa]
+	var upper_speed := gravity_fighting_speed_by_aoa[upper_aoa]
+	for sample_aoa in gravity_fighting_speed_by_aoa:
+		if sample_aoa <= clamped_aoa and sample_aoa >= lower_aoa:
+			lower_aoa = sample_aoa
+			lower_speed = gravity_fighting_speed_by_aoa[sample_aoa]
+		if sample_aoa >= clamped_aoa and sample_aoa <= upper_aoa:
+			upper_aoa = sample_aoa
+			upper_speed = gravity_fighting_speed_by_aoa[sample_aoa]
+	if is_equal_approx(lower_aoa, upper_aoa):
+		return lower_speed
+	return lerpf(lower_speed, upper_speed, inverse_lerp(lower_aoa, upper_aoa, clamped_aoa))
+
 # How quickly the flyer can reorient their body/wings toward the desired maneuver.
 # Higher values mean more responsive steering and faster changes in wing force direction.
 # E.g, "I fell off a cliff, how long does it take to reorient to control my flight again?"
@@ -96,4 +122,3 @@ extends Resource
 # Stamina restored per second.
 # Higher values allow more frequent bursts of powered flight after resting/gliding.
 @export var stamina_recovery := 7.5
-

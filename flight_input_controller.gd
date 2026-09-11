@@ -30,6 +30,7 @@ func get_flight_intent(current_velocity: Vector3) -> FlightIntent:
 			intent.desired_direction,
 			current_velocity
 	)
+	intent.force_wing_direction = Input.is_key_pressed(KEY_SHIFT)
 	intent.wants_flap = movement_strength > 0.0 or Input.is_action_pressed("jump")
 	intent.wants_upward_flap = Input.is_action_pressed("jump")
 	intent.requests_extra_flap = Input.is_action_just_pressed("jump")
@@ -60,4 +61,4 @@ func _get_maneuver_aggression(desired_direction: Vector3, current_velocity: Vect
 			FULL_AGGRESSION_TURN_ANGLE,
 			turn_angle
 	), 0.0, 1.0)
-	return 2.0 if Input.is_key_pressed(KEY_SHIFT) else aggression
+	return aggression

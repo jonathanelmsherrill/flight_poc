@@ -25,11 +25,11 @@ func get_control_command(
 	var air_velocity := flyer_state.air_relative_velocity
 	var airspeed := flyer_state.airspeed
 	if airspeed < MIN_AIRSPEED:
-		command.target_wing_lift_direction = _safe_normalized(
-				flyer_state.wing_lift_direction,
+		command.target_wing_surface_normal = _safe_normalized(
+				flyer_state.wing_normal,
 				Vector3.UP
 		)
-		command.target_aoa = 0.0 #May need to not do this to avoid visual glitching when landing.
+		command.info_intended_aoa = 0.0
 		return command
 
 	var flight_direction := air_velocity / airspeed #aka air_velocity.normalize
@@ -81,20 +81,55 @@ func get_control_command(
 			flyer_profile.base_mass * airspeed * desired_turn_rate
 	)
 
-	var requested_force := support_force + steering_force
-	command.requested_aerodynamic_force = requested_force
-	command.target_wing_lift_direction = _safe_normalized(
-			requested_force,
-			flyer_state.wing_lift_direction
+	# A fixed wing command is purely the selected turn plane.  Do not fold the
+	# normal gravity-support request into it, since that would rotate the wing
+	# away from the direction selected above.
+	var requested_force := (
+			steering_force
+			if intent.force_wing_direction
+			else support_force + steering_force
 	)
-	command.target_aoa = choose_target_aoa(
+	command.info_requested_aerodynamic_force = requested_force
+	var target_lift_direction := _safe_normalized(
+			requested_force,
+			flyer_state.wing_normal
+	)
+	command.info_intended_aoa = choose_target_aoa(
 			intent,
 			requested_force.length(),
 			turn_angle, #I bet 5 rubalinks this isn't needed.
 			air_velocity,
-			command.target_wing_lift_direction,
-			flyer_profile
+			target_lift_direction,
+		flyer_profile
 	)
+	var gravity_fighting_speed := flyer_profile.get_gravity_fighting_speed(command.info_intended_aoa)
+	#if gravity_fighting_speed > 0.0 and airspeed < gravity_fighting_speed*0.9:
+	#		command.info_intended_aoa *= airspeed / (gravity_fighting_speed*0.9)
+
+	if intent.force_wing_direction:
+		# Holding the modifier places the wings three quarters of the way from the
+		# current flight path toward the requested path.  Treat this as the wing
+		# calculation's direction everywhere below; the body can still face the
+		# player's full requested direction.
+		var wing_direction := flight_direction.slerp(desired_direction, 0.75).normalized()
+		command.target_wing_surface_normal = _safe_normalized(
+				_orthogonal_complement(air_velocity, wing_direction),
+				flyer_state.wing_normal
+		) * -1
+		command.info_requested_aerodynamic_force = (
+				command.target_wing_surface_normal
+				* airspeed * airspeed * flyer_profile.aerodynamic_authority
+		)
+		command.info_intended_aoa = _get_surface_normal_aoa(
+				command.target_wing_surface_normal,
+				flight_direction
+		)
+	else:
+		command.target_wing_surface_normal = _get_surface_normal(
+				target_lift_direction,
+				flight_direction,
+				command.info_intended_aoa
+		)
 	return command
 
 ## The angle of attack defines how much lift our wings give. At 0 (effective; ignoring how you get it, like chamfer or Bernoulli)
@@ -122,10 +157,8 @@ func choose_target_aoa(
 	# If a reasonable ask just use the necessary AOA.
 	if required_aoa <= FlightPhysics.NORMAL_TRIM_MAX_AOA:
 		return required_aoa
-	# If unreasonable and we don't want any trouble, still stick to max normal trim. 
-	if intent.maneuver_aggression <= 0.0:
-		return FlightPhysics.NORMAL_TRIM_MAX_AOA
-	## return FlightPhysics.NORMAL_TRIM_MAX_AOA 
+	else:
+		return FlightPhysics.NORMAL_TRIM_MAX_AOA 
 	# ^^ This gives good glides and decent drag but doesn't allow air braaks and forces glides we dont want.
 	# We end up around 9 m/s with drag of 1 ish.
 		
@@ -232,9 +265,10 @@ func _get_predicted_direct_wing_force(
 		return Vector3.ZERO
 
 	var flight_direction := air_velocity / airspeed
-	var surface_normal := _safe_normalized(
-			target_lift_direction * cos(alpha) + flight_direction * sin(alpha),
-			target_lift_direction
+	var surface_normal := _get_surface_normal(
+			target_lift_direction,
+		flight_direction,
+		alpha
 	)
 	var lift_direction := _orthogonal_complement(surface_normal, flight_direction)
 	var dynamic_force := flyer_profile.aerodynamic_authority * airspeed * airspeed
@@ -251,6 +285,29 @@ func _get_predicted_direct_wing_force(
 	if direct_wing_force.length() > structural_force_limit:
 		direct_wing_force = direct_wing_force.normalized() * structural_force_limit
 	return direct_wing_force
+
+## Get the surface normal from a target lift direction and intended AOA into the flight direction (airflow). 
+func _get_surface_normal(
+		target_lift_direction: Vector3,
+		flight_direction: Vector3,
+		intended_aoa: float
+) -> Vector3:
+	return _safe_normalized(
+			target_lift_direction * cos(intended_aoa)
+			+ flight_direction * sin(intended_aoa),
+			target_lift_direction
+	)
+
+## The inverse of the above function, get the aoa (informational) from the surface normal.
+func _get_surface_normal_aoa(surface_normal: Vector3, flight_direction: Vector3) -> float:
+	if surface_normal.length_squared() < 0.0001 or flight_direction.length_squared() < 0.0001:
+		return 0.0
+	var along_flight := clampf(
+			surface_normal.normalized().dot(flight_direction.normalized()),
+			-1.0,
+			1.0
+	)
+	return atan2(along_flight, sqrt(maxf(0.0, 1.0 - along_flight * along_flight)))
 
 ## Also known as vector rejection. Remove all trace of reference_vector from direction,
 ## leaving a vector perpendicular to reference_vector (on a plane defined by direction and reference vector).

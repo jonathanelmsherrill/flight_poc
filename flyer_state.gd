@@ -10,12 +10,11 @@ var airspeed := 0.0
 var is_airborne := false
 
 var body_direction := Vector3.FORWARD
-## The direction this wing produces lift at zero AoA.
-var wing_lift_direction := Vector3.UP
-## The actual normal of the wing surface, including its current AoA tilt.
+## Authoritative physical orientation of the wing surface.
 var wing_normal := Vector3.UP
-var target_aoa := 0.0
-var actual_aoa := 0.0
 var current_flap_direction := Vector3.ZERO
 var active_flap_direction := Vector3.ZERO
-var requested_aerodynamic_force := Vector3.ZERO
+
+## Diagnostics derived from, or requested for, the physical wing state.
+var info_effective_aoa := 0.0
+var info_requested_aerodynamic_force := Vector3.ZERO

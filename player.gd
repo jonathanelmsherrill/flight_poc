@@ -9,10 +9,8 @@ const FLAP_STAMINA_COST := 9.0
 const EXTRA_FLAP_COST_MULTIPLIER := 1.5
 const POWER_STROKE_PERCENTAGE := 0.2
 const BODY_DIRECTION_RESPONSE := 6.0
-const WING_DIRECTION_RESPONSE := 9.0
-const AOA_RESPONSE_RATE := deg_to_rad(240.0)
+const WING_DIRECTION_RESPONSE := 18.0
 const VISUAL_SHOULDER_OFFSET := 0.65
-#const AOA_RESPONSE_RATE := deg_to_rad(360.0)
 
 var ground_input_controller := GroundInputController.new()
 var flight_input_controller := FlightInputController.new()
@@ -35,8 +33,8 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	flight_input_controller.steering_frame = camera_pitch
 	flyer_state.body_direction = -global_basis.z
-	flyer_state.wing_lift_direction = global_basis.y
 	flyer_state.wing_normal = global_basis.y
+	flight_physics.calculate_profile_performance(flyer_profile)
 	stamina = flyer_profile.max_stamina
 	stamina_bar.max_value = flyer_profile.max_stamina
 	stamina_bar.value = stamina
@@ -74,9 +72,8 @@ func apply_ground_movement(
 		jump_requested: bool,
 		delta: float
 ) -> void:
-	flyer_state.requested_aerodynamic_force = Vector3.ZERO
-	flyer_state.target_aoa = 0.0
-	flyer_state.actual_aoa = move_toward(flyer_state.actual_aoa, 0.0, AOA_RESPONSE_RATE * delta)
+	flyer_state.info_requested_aerodynamic_force = Vector3.ZERO
+	flyer_state.info_effective_aoa = 0.0
 
 	var camera_forward := -camera_pitch.global_basis.z
 	var camera_right := camera_pitch.global_basis.x
@@ -108,7 +105,7 @@ func apply_flight_movement(intent: FlightIntent, delta: float) -> void:
 			flyer_state,
 			flyer_profile
 	)
-	flyer_state.requested_aerodynamic_force = control.requested_aerodynamic_force
+	flyer_state.info_requested_aerodynamic_force = control.info_requested_aerodynamic_force
 	update_body_and_wings(control, delta)
 	update_flap_plan(intent)
 
@@ -123,34 +120,11 @@ func update_body_and_wings(control: FlightControlCommand, delta: float) -> void:
 			control.target_body_direction,
 			BODY_DIRECTION_RESPONSE * flyer_profile.control_rate * delta
 	)
-	flyer_state.wing_lift_direction = rotate_direction_toward(
-			flyer_state.wing_lift_direction,
-			control.target_wing_lift_direction,
+	flyer_state.wing_normal = rotate_direction_toward(
+			flyer_state.wing_normal,
+			control.target_wing_surface_normal,
 			WING_DIRECTION_RESPONSE * flyer_profile.control_rate * delta
 	)
-	flyer_state.target_aoa = control.target_aoa
-	flyer_state.actual_aoa = move_toward(
-			flyer_state.actual_aoa,
-			flyer_state.target_aoa,
-			AOA_RESPONSE_RATE * flyer_profile.control_rate * delta
-	)
-	update_wing_surface_normal()
-
-
-func update_wing_surface_normal() -> void:
-	if flyer_state.airspeed < FlightPhysics.MIN_AIRSPEED:
-		flyer_state.wing_normal = flyer_state.wing_lift_direction
-		return
-
-	var flight_direction := flyer_state.air_relative_velocity / flyer_state.airspeed
-	var surface_normal := (
-			flyer_state.wing_lift_direction * cos(flyer_state.actual_aoa)
-			+ flight_direction * sin(flyer_state.actual_aoa)
-	)
-	if surface_normal.length_squared() < 0.0001:
-		flyer_state.wing_normal = flyer_state.wing_lift_direction
-		return
-	flyer_state.wing_normal = surface_normal.normalized()
 
 
 func update_flap_plan(intent: FlightIntent) -> void:
@@ -258,11 +232,11 @@ func update_debug_readouts() -> void:
 			velocity.z
 	).length())
 	flight_debug.submit("VerticalSpeedLabel", "Vertical Speed: %.1f m/s" % velocity.y)
-	flight_debug.submit("AoaLabel", "AoA: %.1f°" % rad_to_deg(flyer_state.actual_aoa))
+	flight_debug.submit("AoaLabel", "AoA: %.1f°" % rad_to_deg(flyer_state.info_effective_aoa))
 	var kinetic_energy := 0.5 * flyer_profile.base_mass * velocity.length_squared()
 	var potential_energy := flyer_profile.base_mass * FlightPhysics.GRAVITY * global_position.y
 	flight_debug.submit("TotalEnergyLabel", "Total Energy: %.0f J" % (kinetic_energy + potential_energy))
-	flight_debug.submit("RequestedAerodynamicForceLabel", "Requested Aero Force: %.0f N" % flyer_state.requested_aerodynamic_force.length())
+	flight_debug.submit("RequestedAerodynamicForceLabel", "Requested Aero Force: %.0f N" % flyer_state.info_requested_aerodynamic_force.length())
 	var lift_acceleration := (physics_result.lift_force / flyer_profile.base_mass).dot(Vector3.UP)
 	flight_debug.submit("LiftLabel", "Lift: %.0f%% gravity" % (lift_acceleration / FlightPhysics.GRAVITY * 100.0))
 	flight_debug.submit("DragLabel", "Drag: %.1f m/s²" % physics_result.get_drag_acceleration(flyer_profile))

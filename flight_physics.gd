@@ -70,11 +70,12 @@ func integrate(
 	result.high_aoa_drag_vector = Vector3.ZERO
 	result.wing_aerodynamic_force = Vector3.ZERO
 	flyer_state.info_effective_aoa = 0.0
-	var updated_velocity := flyer_state.velocity
-	updated_velocity.y -= GRAVITY * delta
-
-	var air_velocity := updated_velocity - flyer_state.air_velocity_world
+	# Every aerodynamic calculation in this tick uses this one snapshot. The
+	# controller built the requested surface normal from the same air velocity.
+	var air_velocity := flyer_state.velocity - flyer_state.air_velocity_world
 	var airspeed := air_velocity.length()
+	var updated_velocity := flyer_state.velocity
+
 	if airspeed >= MIN_AIRSPEED:
 		var effective_aoa := _get_effective_aoa(flyer_state.wing_normal, air_velocity)
 		flyer_state.info_effective_aoa = effective_aoa
@@ -116,13 +117,11 @@ func integrate(
 		result.high_aoa_drag_force = high_aoa_drag_force
 		result.high_aoa_drag_vector = high_aoa_drag_vector
 		var induced_drag_vector := _get_airflow_drag_force(
-				updated_velocity,
-				flyer_state.air_velocity_world,
-			result.induced_drag_force
+				air_velocity,
+				result.induced_drag_force
 		)
 		var parasite_drag_vector := _get_airflow_drag_force(
-				updated_velocity,
-				flyer_state.air_velocity_world,
+				air_velocity,
 				result.parasite_drag_force
 		)
 		result.drag_force = induced_drag_vector + parasite_drag_vector + high_aoa_drag_vector
@@ -132,22 +131,25 @@ func integrate(
 				+ induced_drag_vector
 		)
 		updated_velocity = _apply_drag(
-			updated_velocity,
-			flyer_state.air_velocity_world,
-			result.induced_drag_force + result.parasite_drag_force,
-			flyer_profile.base_mass,
-			delta
+				updated_velocity,
+				air_velocity,
+				result.induced_drag_force + result.parasite_drag_force,
+				flyer_profile.base_mass,
+				delta
 		)
 		updated_velocity = _apply_force(
-			updated_velocity,
-			high_aoa_drag_vector,
-			flyer_profile.base_mass,
-			delta
+				updated_velocity,
+				high_aoa_drag_vector,
+				flyer_profile.base_mass,
+				delta
 		)
 
+	# Apply gravity after aerodynamic forces so the next tick's controller and
+	# this tick's aerodynamic snapshot use the same flight direction.
+	updated_velocity.y -= GRAVITY * delta
 	result.velocity = _apply_flap_force(
 		updated_velocity,
-		flyer_state.air_velocity_world,
+		airspeed,
 		flyer_state.active_flap_direction,
 		flyer_profile,
 		delta
@@ -225,7 +227,7 @@ func _get_surface_pressure_drag_force(
 		return Vector3.ZERO
 	return -normal_air_velocity.normalized() * drag_force
 
-
+## We apply our lift force, then make sure the total energy is the same.
 func _apply_energy_neutral_lift(
 		velocity: Vector3,
 		air_velocity_world: Vector3,
@@ -245,23 +247,20 @@ func _apply_energy_neutral_lift(
 
 func _apply_drag(
 		velocity: Vector3,
-		air_velocity_world: Vector3,
+		air_velocity: Vector3,
 		drag_force: float,
 		mass: float,
 		delta: float
 ) -> Vector3:
-	var air_velocity := velocity - air_velocity_world
 	if drag_force <= 0.0 or air_velocity.length_squared() < 0.0001:
 		return velocity
 	return velocity - air_velocity.normalized() * drag_force / mass * delta
 
 
 func _get_airflow_drag_force(
-		velocity: Vector3,
-		air_velocity_world: Vector3,
+		air_velocity: Vector3,
 		drag_force: float
 ) -> Vector3:
-	var air_velocity := velocity - air_velocity_world
 	if drag_force <= 0.0 or air_velocity.length_squared() < 0.0001:
 		return Vector3.ZERO
 	return -air_velocity.normalized() * drag_force
@@ -278,14 +277,13 @@ func _apply_force(
 
 func _apply_flap_force(
 		velocity: Vector3,
-		air_velocity_world: Vector3,
+		airspeed: float,
 		flap_direction: Vector3,
 		flyer_profile: FlyerProfile,
 		delta: float
 ) -> Vector3:
 	if flap_direction.length_squared() < 0.0001:
 		return velocity
-	var airspeed := (velocity - air_velocity_world).length()
 	var power_limited_force := flyer_profile.max_flap_power / maxf(airspeed, 0.01)
 	var flap_force := minf(flyer_profile.max_flap_force, power_limited_force)
 	return velocity + flap_direction.normalized() * flap_force / flyer_profile.base_mass * delta

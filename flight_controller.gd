@@ -84,11 +84,7 @@ func get_control_command(
 	# A fixed wing command is purely the selected turn plane.  Do not fold the
 	# normal gravity-support request into it, since that would rotate the wing
 	# away from the direction selected above.
-	var requested_force := (
-			steering_force
-			if intent.force_wing_direction
-			else support_force + steering_force
-	)
+	var requested_force := support_force + steering_force
 	command.info_requested_aerodynamic_force = requested_force
 	var target_lift_direction := _safe_normalized(
 			requested_force,
@@ -97,10 +93,8 @@ func get_control_command(
 	command.info_intended_aoa = choose_target_aoa(
 			intent,
 			requested_force.length(),
-			turn_angle, #I bet 5 rubalinks this isn't needed.
 			air_velocity,
-			target_lift_direction,
-		flyer_profile
+			flyer_profile
 	)
 	var gravity_fighting_speed := flyer_profile.get_gravity_fighting_speed(command.info_intended_aoa)
 	#if gravity_fighting_speed > 0.0 and airspeed < gravity_fighting_speed*0.9:
@@ -133,13 +127,11 @@ func get_control_command(
 	return command
 
 ## The angle of attack defines how much lift our wings give. At 0 (effective; ignoring how you get it, like chamfer or Bernoulli)
-## wings provide zero lift.  
+## wings provide zero lift. More AoA means more lift - up to a point. Find the AoA needed for our desired force, up to the max.
 func choose_target_aoa(
 		intent: FlightIntent,
 		required_force: float,
-		turn_angle: float,
 		air_velocity: Vector3,
-		target_lift_direction: Vector3,
 		flyer_profile: FlyerProfile
 ) -> float:
 	var airspeed := air_velocity.length()
@@ -170,121 +162,9 @@ func choose_target_aoa(
 	)
 	return minf(required_aoa, max_allowed_aoa)
 	## ^^ This gives back original behavior. Oddly enough we just burn a little more velocity but the end bevarior is the same 
-	## And the wings flip over backwards?? Somethihng odd here.
 	var target_aoa := required_aoa
-	
-	# Scale the excess AoA back by aggression, where aggression is like the % of maximum lift (at all drag cost)
-	
-	
-	# We will scale from the normal trim AOA to the maximum useful AOA based on 'aggression'.
-	# AoA->Lift is only linear until we approach airflow-separation point, so 
-	# we briefly scale 
-	var normal_trim_lift_coefficient := FlightPhysics.get_lift_coefficient(FlightPhysics.NORMAL_TRIM_MAX_AOA)
-	var maximum_lift_coefficient := FlightPhysics.get_maximum_possible_lift_coefficient()
-
-	# I'm convinced we don't need this, but 0-1 as we go from 0-90 degree turn. 
-	var turn_airbrake_fraction := clampf(turn_angle / (PI * 0.5), 0.0, 1.0)
-	
-	# A force shortfall or a large direction change can request post-stall AoA.
-	# Do not turn that request into arbitrary braking: each candidate must still
-	# produce direct wing force toward the desired path and velocity correction.
-	var force_airbrake_fraction := 0.0
-	if necessary_lift_multiple > maximum_lift_coefficient:
-		force_airbrake_fraction = inverse_lerp(
-			maximum_lift_coefficient,
-			maximum_lift_coefficient * 2.0,
-			necessary_lift_multiple
-		)
-	var airbrake_fraction := maxf(force_airbrake_fraction, turn_airbrake_fraction)
-	if airbrake_fraction > 0.0:
-		var requested_post_stall_aoa := lerpf(
-			target_aoa,
-			FlightPhysics.MAX_AOA,
-			clampf(airbrake_fraction * intent.maneuver_aggression, 0.0, 1.0)
-		)
-		target_aoa = _get_highest_helpful_aoa(
-			target_aoa,
-			requested_post_stall_aoa,
-			intent.desired_direction,
-			air_velocity,
-			target_lift_direction,
-			flyer_profile
-		)
 
 	return target_aoa
-
-	
-
-func _get_highest_helpful_aoa(
-		base_aoa: float,
-		requested_aoa: float,
-		desired_direction: Vector3,
-		air_velocity: Vector3,
-		target_lift_direction: Vector3,
-		flyer_profile: FlyerProfile
-) -> float:
-	var airspeed := air_velocity.length()
-	if airspeed < MIN_AIRSPEED or requested_aoa <= base_aoa:
-		return base_aoa
-
-	var desired_velocity_change := desired_direction.normalized() * airspeed - air_velocity
-	if desired_velocity_change.length_squared() < 0.0001:
-		return base_aoa
-
-	var highest_helpful_aoa := base_aoa
-	const CANDIDATE_COUNT := 12
-	for index in range(1, CANDIDATE_COUNT + 1):
-		var candidate_aoa := lerpf(
-			base_aoa,
-			requested_aoa,
-			float(index) / CANDIDATE_COUNT
-		)
-		var candidate_force := _get_predicted_direct_wing_force(
-			candidate_aoa,
-			air_velocity,
-			target_lift_direction,
-			flyer_profile
-		)
-		if candidate_force.dot(desired_direction) <= 0.0:
-			break
-		if candidate_force.dot(desired_velocity_change) <= 0.0:
-			break
-		highest_helpful_aoa = candidate_aoa
-
-	return highest_helpful_aoa
-
-
-func _get_predicted_direct_wing_force(
-		alpha: float,
-		air_velocity: Vector3,
-		target_lift_direction: Vector3,
-		flyer_profile: FlyerProfile
-) -> Vector3:
-	var airspeed := air_velocity.length()
-	if airspeed < MIN_AIRSPEED:
-		return Vector3.ZERO
-
-	var flight_direction := air_velocity / airspeed
-	var surface_normal := _get_surface_normal(
-			target_lift_direction,
-		flight_direction,
-		alpha
-	)
-	var lift_direction := _orthogonal_complement(surface_normal, flight_direction)
-	var dynamic_force := flyer_profile.aerodynamic_authority * airspeed * airspeed
-	var lift_force := lift_direction * dynamic_force * FlightPhysics.get_lift_coefficient(alpha)
-	var normal_air_velocity := surface_normal * air_velocity.dot(surface_normal)
-	var plate_drag_force := Vector3.ZERO
-	if normal_air_velocity.length_squared() >= 0.0001:
-		plate_drag_force = -normal_air_velocity.normalized() * (
-			dynamic_force * FlightPhysics.get_high_aoa_drag_coefficient(alpha)
-		)
-
-	var direct_wing_force := lift_force + plate_drag_force
-	var structural_force_limit := flyer_profile.structural_load_tolerance * flyer_profile.base_mass
-	if direct_wing_force.length() > structural_force_limit:
-		direct_wing_force = direct_wing_force.normalized() * structural_force_limit
-	return direct_wing_force
 
 ## Get the surface normal from a target lift direction and intended AOA into the flight direction (airflow). 
 func _get_surface_normal(

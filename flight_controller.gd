@@ -33,6 +33,18 @@ func get_control_command(
 		return command
 
 	var flight_direction := air_velocity / airspeed #aka air_velocity.normalize
+	if intent.wants_airbrake:
+		# Present the entire wing surface to the airflow. FlightPhysics resolves
+		# this into its maximum separated-flow pressure drag.
+		command.target_wing_surface_normal = Vector3.UP.slerp(-1*flight_direction,0.6)
+		command.info_intended_aoa = PI * 0.0
+		command.info_requested_aerodynamic_force = -flight_direction * (
+				flyer_profile.aerodynamic_authority
+				* airspeed * airspeed
+				* FlightPhysics.get_high_aoa_drag_coefficient(command.info_intended_aoa)
+		)
+		return command
+
 	var steering_direction := _orthogonal_complement(desired_direction, flight_direction)
 
 	# Wings can only oppose the component of gravity perpendicular to the
@@ -101,7 +113,7 @@ func get_control_command(
 	#		command.info_intended_aoa *= airspeed / (gravity_fighting_speed*0.9)
 
 	if intent.force_wing_direction:
-		# Holding the modifier places the wings three quarters of the way from the
+		# Holding Caps Lock places the wings three quarters of the way from the
 		# current flight path toward the requested path.  Treat this as the wing
 		# calculation's direction everywhere below; the body can still face the
 		# player's full requested direction.

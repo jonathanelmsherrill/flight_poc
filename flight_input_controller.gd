@@ -6,6 +6,7 @@ extends RefCounted
 ## aerodynamic controller.
 var freelook_flight_direction := Vector3.FORWARD
 var was_freelooking := false
+var fixed_wing_mode := false
 var current_flight_intent := FlightIntent.new()
 var steering_frame: Node3D #This is the camera direction that holds where we're pointing.
 
@@ -13,6 +14,9 @@ const GENTLE_TURN_ANGLE := deg_to_rad(10.0)
 const FULL_AGGRESSION_TURN_ANGLE := deg_to_rad(60.0)
 
 func get_flight_intent(current_velocity: Vector3) -> FlightIntent:
+	if Input.is_action_just_pressed("toggle_fixed_wing"):
+		fixed_wing_mode = not fixed_wing_mode
+
 	var steering_direction := _get_steering_direction()
 	var freelooking := Input.is_action_pressed("freelook")
 	if freelooking and not was_freelooking:
@@ -30,12 +34,12 @@ func get_flight_intent(current_velocity: Vector3) -> FlightIntent:
 			intent.desired_direction,
 			current_velocity
 	)
-	intent.force_wing_direction = Input.is_key_pressed(KEY_SHIFT)
+	intent.force_wing_direction = fixed_wing_mode
+	intent.wants_airbrake = Input.is_key_pressed(KEY_SHIFT)
 	intent.wants_flap = movement_strength > 0.0 or Input.is_action_pressed("jump")
 	intent.wants_upward_flap = Input.is_action_pressed("jump")
 	intent.requests_extra_flap = Input.is_action_just_pressed("jump")
 	return intent
-
 
 func get_movement_input() -> Vector2:
 	return Input.get_vector("move_left", "move_right", "move_forward", "move_backward")

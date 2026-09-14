@@ -10,6 +10,9 @@ var parasite_drag_force := 0.0
 var high_aoa_drag_force := 0.0
 var high_aoa_drag_vector := Vector3.ZERO
 var wing_aerodynamic_force := Vector3.ZERO
+## Mechanical energy used by active flapping during this integration tick.
+## Player owns the stamina reserve and accounts for this report.
+var flap_energy_used_joules := 0.0
 
 
 func get_drag_acceleration(flyer_profile: FlyerProfile) -> float:

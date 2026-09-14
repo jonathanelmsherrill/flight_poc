@@ -5,9 +5,6 @@ extends CharacterBody3D
 
 const GROUND_MOVE_SPEED := 8.0
 const JUMP_VELOCITY := 4.5
-const FLAP_STAMINA_COST := 9.0
-const EXTRA_FLAP_COST_MULTIPLIER := 1.5
-const POWER_STROKE_PERCENTAGE := 0.2
 const BODY_DIRECTION_RESPONSE := 6.0
 const WING_DIRECTION_RESPONSE := 18.0
 const VISUAL_SHOULDER_OFFSET := 0.65
@@ -20,7 +17,8 @@ var flyer_state := FlyerState.new()
 var physics_result := FlightPhysicsResult.new()
 var flight_debug: FlightDebug
 var time_since_flap := 10.0
-var stamina := 0.0
+var stamina_energy_kilojoules := 0.0
+var reported_energy_used_joules := 0.0
 var flap_tween: Tween
 
 @onready var camera_pitch: Node3D = $CameraPivot/CameraPitch
@@ -35,13 +33,14 @@ func _ready() -> void:
 	flyer_state.body_direction = -global_basis.z
 	flyer_state.wing_normal = global_basis.y
 	flight_physics.calculate_profile_performance(flyer_profile)
-	stamina = flyer_profile.max_stamina
-	stamina_bar.max_value = flyer_profile.max_stamina
-	stamina_bar.value = stamina
+	stamina_energy_kilojoules = flyer_profile.stamina_capacity_kilojoules
+	stamina_bar.max_value = flyer_profile.stamina_capacity_kilojoules
+	stamina_bar.value = stamina_energy_kilojoules
 	flight_debug = FlightDebug.new($CanvasLayer/DebugContainer)
 
 
 func _physics_process(delta: float) -> void:
+	reported_energy_used_joules = 0.0
 	time_since_flap = minf(time_since_flap + delta, 10.0)
 	update_flyer_state()
 
@@ -57,7 +56,7 @@ func _physics_process(delta: float) -> void:
 		# And then the physics engine determines what happens.
 		apply_flight_movement(flight_input_controller.get_flight_intent(velocity), delta)
 
-	recover_stamina(delta)
+	update_stamina_energy(delta)
 	update_visual_orientation(delta)
 	update_debug_readouts()
 	move_and_slide()
@@ -112,6 +111,7 @@ func apply_flight_movement(intent: FlightIntent, delta: float) -> void:
 	update_flyer_state()
 	flight_physics.integrate(flyer_state, flyer_profile, delta, physics_result)
 	velocity = physics_result.velocity
+	report_energy_used(physics_result.flap_energy_used_joules)
 
 
 func update_body_and_wings(control: FlightControlCommand, delta: float) -> void:
@@ -136,7 +136,7 @@ func update_flap_plan(intent: FlightIntent) -> void:
 	elif intent.wants_flap:
 		flyer_state.current_flap_direction = intent.desired_direction
 
-	if inside_power_stroke():
+	if stamina_energy_kilojoules > 0.0 and inside_power_stroke():
 		flyer_state.active_flap_direction = flyer_state.current_flap_direction
 
 	var regular_flap_due := time_since_flap >= flyer_profile.flap_cycle_duration
@@ -148,20 +148,16 @@ func update_flap_plan(intent: FlightIntent) -> void:
 	if not intent.wants_flap or not (regular_flap_due or extra_flap_requested):
 		return
 
-	var stamina_cost := FLAP_STAMINA_COST
-	if extra_flap_requested:
-		stamina_cost *= EXTRA_FLAP_COST_MULTIPLIER
-	if stamina < stamina_cost:
+	if stamina_energy_kilojoules <= 0.0:
 		return
 
-	stamina -= stamina_cost
 	time_since_flap = 0.0
 	flyer_state.active_flap_direction = flyer_state.current_flap_direction
 	flap_visual()
 
 
 func inside_power_stroke() -> bool:
-	return time_since_flap < flyer_profile.flap_cycle_duration * POWER_STROKE_PERCENTAGE
+	return time_since_flap < flyer_profile.flap_cycle_duration * flyer_profile.power_stroke_fraction
 
 
 func update_flyer_state() -> void:
@@ -179,13 +175,22 @@ func rotate_direction_toward(current: Vector3, target: Vector3, weight: float) -
 	return current.normalized().slerp(target.normalized(), clampf(weight, 0.0, 1.0))
 
 
-func recover_stamina(delta: float) -> void:
-	stamina = clampf(
-			stamina + flyer_profile.stamina_recovery * delta,
+## Activities report their actual energy use here. This keeps the stamina
+## reserve independent of which system created the demand.
+func report_energy_used(energy_used_joules: float) -> void:
+	reported_energy_used_joules += maxf(energy_used_joules, 0.0)
+
+
+func update_stamina_energy(delta: float) -> void:
+	var sustainable_energy_joules := flyer_profile.sustainable_flap_power * delta
+	stamina_energy_kilojoules = clampf(
+			stamina_energy_kilojoules + (
+				sustainable_energy_joules - reported_energy_used_joules
+			) / 1000.0,
 			0.0,
-			flyer_profile.max_stamina
+			flyer_profile.stamina_capacity_kilojoules
 	)
-	stamina_bar.value = stamina
+	stamina_bar.value = stamina_energy_kilojoules
 
 
 func update_visual_orientation(_delta: float) -> void:

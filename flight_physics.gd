@@ -69,6 +69,7 @@ func integrate(
 	result.high_aoa_drag_force = 0.0
 	result.high_aoa_drag_vector = Vector3.ZERO
 	result.wing_aerodynamic_force = Vector3.ZERO
+	result.flap_energy_used_joules = 0.0
 	flyer_state.info_effective_aoa = 0.0
 	# Every aerodynamic calculation in this tick uses this one snapshot. The
 	# controller built the requested surface normal from the same air velocity.
@@ -147,13 +148,15 @@ func integrate(
 	# Apply gravity after aerodynamic forces so the next tick's controller and
 	# this tick's aerodynamic snapshot use the same flight direction.
 	updated_velocity.y -= GRAVITY * delta
-	result.velocity = _apply_flap_force(
+	var flap_result := _apply_flap_force(
 		updated_velocity,
 		airspeed,
 		flyer_state.active_flap_direction,
 		flyer_profile,
 		delta
 	)
+	result.velocity = flap_result.velocity
+	result.flap_energy_used_joules = flap_result.energy_used_joules
 	return result
 
 
@@ -281,9 +284,18 @@ func _apply_flap_force(
 		flap_direction: Vector3,
 		flyer_profile: FlyerProfile,
 		delta: float
-) -> Vector3:
+) -> Dictionary:
 	if flap_direction.length_squared() < 0.0001:
-		return velocity
-	var power_limited_force := flyer_profile.max_flap_power / maxf(airspeed, 0.01)
+		return {"velocity": velocity, "energy_used_joules": 0.0}
+	# A normal full wingbeat spends the sustainable energy budget for one cycle.
+	# This concentrates that energy in the power stroke without a peak-power stat.
+	var stroke_power_limit := flyer_profile.sustainable_flap_power / maxf(
+			flyer_profile.power_stroke_fraction,
+			0.01
+	)
+	var power_limited_force := stroke_power_limit / maxf(airspeed, 0.01)
 	var flap_force := minf(flyer_profile.max_flap_force, power_limited_force)
-	return velocity + flap_direction.normalized() * flap_force / flyer_profile.base_mass * delta
+	return {
+		"velocity": velocity + flap_direction.normalized() * flap_force / flyer_profile.base_mass * delta,
+		"energy_used_joules": flap_force * airspeed * delta
+	}

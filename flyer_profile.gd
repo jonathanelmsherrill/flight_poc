@@ -27,7 +27,7 @@ extends Resource
 # Which is woefully incapable of keeping a 45 kg human in the air.   
 # Thus our fantasy winged flying human needs to be closer to 5.  
 # Doubling it halves induced drag and doubles lift. 12 lets you turn on a dime.
-@export var aerodynamic_authority := 6
+@export var aerodynamic_authority := 5
 
 # Maximum aerodynamic acceleration the wings/body can physically tolerate.
 # At high speed this becomes the limiting factor and forces tighter wing trim.
@@ -79,18 +79,18 @@ func get_gravity_fighting_speed(aoa: float) -> float:
 # Maximum force the flyer can generate through an active wingbeat.
 # Dominates at low airspeed, where available power is not yet limiting.
 # Measured in Newtons. 
-# At low speed, impulse per flap = flap_force * flap_cycle_duration * power_stroke_percentage
-# (cycle-averaged) Acceleration is flap_force * power_stroke_percentage / mass
+# At low speed, impulse per flap = flap_force * power-stroke duration.
+# Cycle-averaged acceleration is flap_force * power_stroke_fraction / mass.
 # So assuming 45 kg mass 500 flap force = 2.22 m/s^2.    
 @export var max_flap_force := 500.0
 
-# Maximum mechanical power the flyer can deliver through active wingbeats.
+# Sustainable mechanical power the flyer can deliver through active wingbeats.
 # At higher relevant airflow/output speeds, available flap force is limited
-# approximately by force <= power / velocity.
+# approximately by force <= stroke power / velocity.
 # Measured in Watts.
-# At high speed, impulse per flap = flap power / velocity * flap_cycle_duration * power_stroke_percentage
-# (cycle averaged) Acceleration is flap_power / velocity * power_stroke_percentage / mass
-# So you'll notice flap power starts to become limiting when max_power/max_force < velocity in m/s. 
+# At high speed, impulse per flap = stroke power / velocity * power stroke duration.
+# The force becomes limited when sustainable power / stroke fraction / max force
+# is less than the airspeed.
 # This also starts to highlight some of the game magic that enables human flight. 500 newtons of flap force?
 # Bah, that's a deadlift! No problem! Maintaining that force at speed? Now our brave hero is an absurd 
 # 2.5 kilowatt generator. Actually, typical muscle efficiency is around 25%, so she's also a 7.5 KW space heater. 
@@ -100,25 +100,24 @@ func get_gravity_fighting_speed(aoa: float) -> float:
 # Those giant wings must also be fantastic heat exchangers. 
 # Handy formula: max_speed= cube_root(power_stroke_percentage * flap_power / air_drag_coefficient / mass)	
 # So 2500 max power at 45 kg and 0.008 drag ~= 11 m/s top speed, about 24 mph.
-# And 4500 max power ~= 30 mph, which actually makes for a nicer game. She sustains twice the instantaneous peak output of top athletes! 
-@export var max_flap_power := 4500.0
+# At 4,500 W, the current values create an intentionally fantastical flyer.
+# Average mechanical power that can be maintained indefinitely, in Watts.
+# A power stroke concentrates a cycle's energy into its active window. At
+# speed, force is limited by sustainable power / stroke fraction / airspeed.
+@export var sustainable_flap_power := 900.0
 
-# How long is one beat cycle. This is mostly visual but also affects the "feel" of flying. 
-# Stamina norms out time now so net stamina cost is unaffected, but larger values make it chunkier.
-# Game allows for "extra" wingbeats (especially vertical) at extra stamina cost. In seconds.
+# How long is one beat cycle. It controls cadence and the sustainable energy
+# budget assigned to each normal wingbeat, in seconds.
 @export var flap_cycle_duration := 1
-# This is the portion of the flap that is the power stroke. Increasing this linearly increases 
-# the impulse from flap power and force without costing stamina, 
-# so it should probably be left alone. May convert it to a 
-# gamewide constant at some point, as there seems little value in having it configurable. 
-#@export var power_stroke_percentage := 0.2 
+# Portion of each cycle that produces force. A shorter stroke has a higher
+# instantaneous limit because the same cycle energy is concentrated in it.
+@export_range(0.01, 1.0) var power_stroke_fraction := 0.2
 
 @export_group("Stamina")
 
-# Total stamina available for flapping and other strenuous flight actions.
-# Higher values allow longer periods of powered flight before exhaustion.
-@export var max_stamina := 200.0
+# Energy reserve above sustainable output. Higher values allow more extra
+# wingbeats and other strenuous actions before exhaustion, in kilojoules.
+@export var stamina_capacity_kilojoules := 200.0
 
-# Stamina restored per second.
-# Higher values allow more frequent bursts of powered flight after resting/gliding.
-@export var stamina_recovery := 7.5
+# Recovery is calculated from the difference between sustainable power and all
+# reported energy use, so no separate regeneration rate is needed.

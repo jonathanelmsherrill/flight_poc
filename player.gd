@@ -129,6 +129,9 @@ func update_body_and_wings(control: FlightControlCommand, delta: float) -> void:
 
 func update_flap_plan(intent: FlightIntent) -> void:
 	flyer_state.active_flap_direction = Vector3.ZERO
+	if flyer_state.airspeed > flyer_profile.max_airspeed_can_flap:
+		return
+
 	if intent.wants_upward_flap:
 		flyer_state.current_flap_direction = Vector3.UP if intent.maneuver_aggression <= 0.0 else (
 				Vector3.UP + intent.desired_direction

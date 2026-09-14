@@ -12,7 +12,7 @@ const FULL_SEPARATION_AOA := deg_to_rad(25.0) # More like 15-18 degrees
 const MAX_AOA := deg_to_rad(90.0)
 const PLATE_LIFT_COEFFICIENT := 1.6
 const PLATE_DRAG_COEFFICIENT := 1.5
-const INDUCED_DRAG_COEFFICIENT := 0.14
+const INDUCED_DRAG_COEFFICIENT := 0.05 #0.14
 const MIN_AIRSPEED := 0.2
 const PERFORMANCE_AOA_STEP := 0.25
 

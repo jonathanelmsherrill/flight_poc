@@ -27,7 +27,7 @@ extends Resource
 # Which is woefully incapable of keeping a 45 kg human in the air.   
 # Thus our fantasy winged flying human needs to be closer to 5.  
 # Doubling it halves induced drag and doubles lift. 12 lets you turn on a dime.
-@export var aerodynamic_authority := 5
+@export var aerodynamic_authority := 2.8
 
 # Maximum aerodynamic acceleration the wings/body can physically tolerate.
 # At high speed this becomes the limiting factor and forces tighter wing trim.
@@ -37,7 +37,7 @@ extends Resource
 # Base drag from moving through the air.
 # Parasite drag increases roughly with velocity squared.
 # Lower values mean better streamlining and less speed loss in normal flight.
-@export var parasite_drag_coefficient := 0.008
+@export var parasite_drag_coefficient := 0.004 # 0.008
 
 ## Runtime performance data calculated by FlightPhysics when the player starts.
 var gravity_fighting_speed_by_aoa: Dictionary[float, float] = {}
@@ -82,7 +82,11 @@ func get_gravity_fighting_speed(aoa: float) -> float:
 # At low speed, impulse per flap = flap_force * power-stroke duration.
 # Cycle-averaged acceleration is flap_force * power_stroke_fraction / mass.
 # So assuming 45 kg mass 500 flap force = 2.22 m/s^2.    
-@export var max_flap_force := 500.0
+@export var max_flap_force := 350.0
+
+# Active flapping is disabled above this airspeed, in metres per second.
+# The limit protects the flyer from attempting power strokes at unsafe speed.
+@export var max_airspeed_can_flap := 45.0
 
 # Sustainable mechanical power the flyer can deliver through active wingbeats.
 # At higher relevant airflow/output speeds, available flap force is limited
@@ -117,7 +121,7 @@ func get_gravity_fighting_speed(aoa: float) -> float:
 
 # Energy reserve above sustainable output. Higher values allow more extra
 # wingbeats and other strenuous actions before exhaustion, in kilojoules.
-@export var stamina_capacity_kilojoules := 200.0
+@export var stamina_capacity_kilojoules := 10.0
 
 # Recovery is calculated from the difference between sustainable power and all
 # reported energy use, so no separate regeneration rate is needed.

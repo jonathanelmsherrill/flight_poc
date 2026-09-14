@@ -46,7 +46,7 @@ sky = SubResource("Sky_frcqw")
 [node name="Ground" type="StaticBody3D" parent="." unique_id=1359509003]
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Ground" unique_id=524332965]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.1856029, -0.053049088, 0.3204136)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.041009665, -0.05305004, 0.24142265)
 mesh = SubResource("BoxMesh_53s12")
 surface_material_override/0 = SubResource("StandardMaterial3D_cgkto")
 

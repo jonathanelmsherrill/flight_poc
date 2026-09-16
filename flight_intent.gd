@@ -5,6 +5,7 @@ extends RefCounted
 ## details such as angle of attack or wing deployment.
 var desired_direction := Vector3.FORWARD
 var maneuver_aggression := 0.0
+var turn_response_multiplier := 1.0
 var force_wing_direction := false
 var wants_airbrake := false
 var wants_flap := false

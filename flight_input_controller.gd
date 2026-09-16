@@ -47,12 +47,20 @@ func get_flight_intent(current_velocity: Vector3) -> FlightIntent:
 			intent.desired_direction,
 			current_velocity
 	)
+	intent.turn_response_multiplier = get_turn_response_multiplier(
+			steering_direction
+	)
 	intent.force_wing_direction = false
 	intent.wants_airbrake = Input.is_key_pressed(KEY_SHIFT)
 	intent.wants_flap = movement_strength > 0.0 or Input.is_action_pressed("jump")
 	intent.wants_upward_flap = Input.is_action_pressed("jump")
 	intent.requests_extra_flap = Input.is_action_just_pressed("jump")
 	return intent
+
+
+func get_turn_response_multiplier(_steering_direction: Vector3) -> float:
+	return 1.0
+
 
 func get_movement_input() -> Vector2:
 	return Input.get_vector("move_left", "move_right", "move_forward", "move_backward")

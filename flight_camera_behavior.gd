@@ -14,6 +14,14 @@ func activate(body_direction: Vector3) -> void:
 	update_body_direction(body_direction)
 
 
+func get_reference_direction(player: Player) -> Vector3:
+	return player.visible_flight_direction()
+
+
+func process_camera(body_direction: Vector3, _delta: float) -> void:
+	update_body_direction(body_direction)
+
+
 func handle_mouse_motion(_relative: Vector2, _viewport_size: Vector2) -> void:
 	pass
 

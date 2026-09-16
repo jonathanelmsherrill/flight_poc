@@ -19,9 +19,9 @@ func _ready() -> void:
 	spring_arm.add_excluded_object(player.get_rid())
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if flight_camera_behavior:
-		flight_camera_behavior.update_body_direction(player.visible_flight_direction())
+		flight_camera_behavior.process_camera(_get_reference_direction(), delta)
 
 
 func _input(event: InputEvent) -> void:
@@ -49,12 +49,12 @@ func _input(event: InputEvent) -> void:
 func set_flight_camera_behavior(new_behavior: FlightCameraBehavior) -> void:
 	flight_camera_behavior = new_behavior
 	flight_camera_behavior.setup(camera_pivot, camera_pitch)
-	flight_camera_behavior.activate(player.visible_flight_direction())
+	flight_camera_behavior.activate(_get_reference_direction())
 
 
 func get_steering_direction() -> Vector3:
 	if flight_camera_behavior:
-		flight_camera_behavior.update_body_direction(player.visible_flight_direction())
+		flight_camera_behavior.update_body_direction(_get_reference_direction())
 		return flight_camera_behavior.get_steering_direction()
 	return -camera_pitch.global_basis.z.normalized()
 
@@ -67,6 +67,16 @@ func get_control_cursor_screen_position() -> Vector2:
 			flight_camera_behavior.get_control_cursor_offset()
 			* viewport_size * 0.45
 	)
+
+
+func get_active_reference_direction() -> Vector3:
+	return _get_reference_direction()
+
+
+func _get_reference_direction() -> Vector3:
+	if flight_camera_behavior:
+		return flight_camera_behavior.get_reference_direction(player)
+	return player.visible_flight_direction()
 
 
 func return_freelook_to_front() -> void:

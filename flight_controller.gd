@@ -86,8 +86,10 @@ func get_control_command(
 			intent.maneuver_aggression
 	)
 	var turn_angle := acos(clampf(flight_direction.dot(desired_direction), -1.0, 1.0))
-	# Pick the desired rate - aim for the min_response_time unless it exceeds the max turn rate. 
+	# Pick the desired rate - aim for the min_response_time unless it exceeds the max turn rate.
+	# Limited control schemes can soften or strengthen the physical steering request.
 	var desired_turn_rate := minf(turn_angle / min_turn_response_time, max_turn_rate)
+	desired_turn_rate *= intent.turn_response_multiplier
 	# The centripetal acceleration described above.
 	var steering_force := steering_direction * (
 			flyer_profile.base_mass * airspeed * desired_turn_rate

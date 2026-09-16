@@ -13,6 +13,8 @@ var ground_input_controller := GroundInputController.new()
 var flight_input_controllers: Array[FlightInputController] = [
 	OpenLookFlightInputController.new(),
 	OpenLookLimited1FlightInputController.new(),
+	OpenLookLimited2FlightInputController.new(),
+	PointerSmoothCameraFlightInputController.new(),
 	MechwarriorFlightInputController.new(),
 	Mechwarrior2FlightInputController.new()
 ]
@@ -77,9 +79,7 @@ func player_intended_direction() -> Vector3:
 	return flight_input_controller.current_flight_intent.desired_direction
 
 
-## Direction Capsule Girl visibly points in flight. Camera-relative control
-## limits must use this same reference or they can appear to rotate behind her
-## while the controller's abstract body direction changes ahead of her motion.
+## Capsule Girl's visible forward direction follows her flight path.
 func visible_flight_direction() -> Vector3:
 	var air_velocity := velocity - flyer_state.air_velocity_world
 	if flyer_state.is_airborne and air_velocity.length_squared() >= 0.0001:

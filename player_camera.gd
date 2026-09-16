@@ -1,6 +1,6 @@
+class_name PlayerCamera
 extends Camera3D
 
-const MOUSE_SENSITIVITY := 0.005
 const MAX_PITCH := deg_to_rad(80.0)
 const FREELOOK_RETURN_DURATION := 0.15
 
@@ -12,10 +12,16 @@ const FREELOOK_RETURN_DURATION := 0.15
 @onready var spring_arm: SpringArm3D = get_node("..")
 
 var freelook_return_tween: Tween
+var flight_camera_behavior: FlightCameraBehavior
 
 
 func _ready() -> void:
 	spring_arm.add_excluded_object(player.get_rid())
+
+
+func _process(_delta: float) -> void:
+	if flight_camera_behavior:
+		flight_camera_behavior.update_body_direction(player.visible_flight_direction())
 
 
 func _input(event: InputEvent) -> void:
@@ -29,12 +35,38 @@ func _input(event: InputEvent) -> void:
 	if freelooking and freelook_return_tween:
 		freelook_return_tween.kill()
 
-	var pivot := freelook_pivot if freelooking else camera_pivot
-	var pitch := freelook_pitch if freelooking else camera_pitch
+	if freelooking:
+		freelook_pivot.rotate_y(-event.relative.x * OpenLookFlightCameraBehavior.MOUSE_SENSITIVITY)
+		freelook_pitch.rotate_x(-event.relative.y * OpenLookFlightCameraBehavior.MOUSE_SENSITIVITY)
+		freelook_pitch.rotation.x = clampf(freelook_pitch.rotation.x, -MAX_PITCH, MAX_PITCH)
+	elif flight_camera_behavior:
+		flight_camera_behavior.handle_mouse_motion(
+				event.relative,
+				get_viewport().get_visible_rect().size
+		)
 
-	pivot.rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
-	pitch.rotate_x(-event.relative.y * MOUSE_SENSITIVITY)
-	pitch.rotation.x = clampf(pitch.rotation.x, -MAX_PITCH, MAX_PITCH)
+
+func set_flight_camera_behavior(new_behavior: FlightCameraBehavior) -> void:
+	flight_camera_behavior = new_behavior
+	flight_camera_behavior.setup(camera_pivot, camera_pitch)
+	flight_camera_behavior.activate(player.visible_flight_direction())
+
+
+func get_steering_direction() -> Vector3:
+	if flight_camera_behavior:
+		flight_camera_behavior.update_body_direction(player.visible_flight_direction())
+		return flight_camera_behavior.get_steering_direction()
+	return -camera_pitch.global_basis.z.normalized()
+
+
+func get_control_cursor_screen_position() -> Vector2:
+	var viewport_size := get_viewport().get_visible_rect().size
+	if not flight_camera_behavior:
+		return viewport_size * 0.5
+	return viewport_size * 0.5 + (
+			flight_camera_behavior.get_control_cursor_offset()
+			* viewport_size * 0.45
+	)
 
 
 func return_freelook_to_front() -> void:

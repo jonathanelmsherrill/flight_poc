@@ -4,7 +4,7 @@ extends RefCounted
 const GRAVITY := 9.8
 const GENTLE_MIN_RESPONSE_TIME := 0.6 #For small turns, we take at least this long to avoid small sharp corrections needlessly costing drag 
 const AGGRESSIVE_MIN_TURN_RESPONSE_TIME := 0.6 # 
-const GENTLE_MAX_TURN_RATE:= PI/4.0 #For gentle turns, pi/4 = 45o/second 
+const GENTLE_MAX_TURN_RATE:= PI/8.0 #For gentle turns, pi/4 = 45o/second 
 const AGGRESSIVE_MAX_TURN_RATE := PI/1.5 # For aggressive turns   
 const MIN_AIRSPEED := 0.2
 
@@ -113,8 +113,8 @@ func get_control_command(
 	#		command.info_intended_aoa *= airspeed / (gravity_fighting_speed*0.9)
 
 	if intent.force_wing_direction:
-		# Holding Caps Lock places the wings three quarters of the way from the
-		# current flight path toward the requested path.  Treat this as the wing
+		# Forced-wing modes place the wings three quarters of the way from the
+		# current flight path toward the requested path. Treat this as the wing
 		# calculation's direction everywhere below; the body can still face the
 		# player's full requested direction.
 		var wing_direction := flight_direction.slerp(desired_direction, 0.75).normalized()

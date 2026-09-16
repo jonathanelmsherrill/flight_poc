@@ -10,7 +10,14 @@ const WING_DIRECTION_RESPONSE := 18.0
 const VISUAL_SHOULDER_OFFSET := 0.65
 
 var ground_input_controller := GroundInputController.new()
-var flight_input_controller := FlightInputController.new()
+var flight_input_controllers: Array[FlightInputController] = [
+	OpenLookFlightInputController.new(),
+	OpenLookLimited1FlightInputController.new(),
+	MechwarriorFlightInputController.new(),
+	Mechwarrior2FlightInputController.new()
+]
+var flight_input_mode_index := 0
+var flight_input_controller: FlightInputController
 var flight_controller := FlightController.new()
 var flight_physics := FlightPhysics.new()
 var flyer_state := FlyerState.new()
@@ -22,6 +29,7 @@ var reported_energy_used_joules := 0.0
 var flap_tween: Tween
 
 @onready var camera_pitch: Node3D = $CameraPivot/CameraPitch
+@onready var player_camera: PlayerCamera = $CameraPivot/CameraPitch/FreelookPivot/FreelookPitch/SpringArm3D/Camera3D
 @onready var stamina_bar: ProgressBar = $CanvasLayer/ProgressBar
 @onready var visual_root: Node3D = $VisualRoot
 @onready var wings: Wings = $Wings
@@ -29,9 +37,9 @@ var flap_tween: Tween
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	flight_input_controller.steering_frame = camera_pitch
 	flyer_state.body_direction = -global_basis.z
 	flyer_state.wing_normal = global_basis.y
+	activate_flight_input_mode(0)
 	flight_physics.calculate_profile_performance(flyer_profile)
 	stamina_energy_kilojoules = flyer_profile.stamina_capacity_kilojoules
 	stamina_bar.max_value = flyer_profile.stamina_capacity_kilojoules
@@ -40,6 +48,9 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if Input.is_action_just_pressed("cycle_flight_input_mode"):
+		activate_flight_input_mode((flight_input_mode_index + 1) % flight_input_controllers.size())
+
 	reported_energy_used_joules = 0.0
 	time_since_flap = minf(time_since_flap + delta, 10.0)
 	update_flyer_state()
@@ -64,6 +75,22 @@ func _physics_process(delta: float) -> void:
 
 func player_intended_direction() -> Vector3:
 	return flight_input_controller.current_flight_intent.desired_direction
+
+
+## Direction Capsule Girl visibly points in flight. Camera-relative control
+## limits must use this same reference or they can appear to rotate behind her
+## while the controller's abstract body direction changes ahead of her motion.
+func visible_flight_direction() -> Vector3:
+	var air_velocity := velocity - flyer_state.air_velocity_world
+	if flyer_state.is_airborne and air_velocity.length_squared() >= 0.0001:
+		return air_velocity.normalized()
+	return flyer_state.body_direction.normalized()
+
+
+func activate_flight_input_mode(mode_index: int) -> void:
+	flight_input_mode_index = mode_index
+	flight_input_controller = flight_input_controllers[flight_input_mode_index]
+	flight_input_controller.activate(player_camera)
 
 
 func apply_ground_movement(
@@ -234,6 +261,10 @@ func flap_visual() -> void:
 
 
 func update_debug_readouts() -> void:
+	flight_debug.submit(
+			"FlightInputModeLabel",
+			"Flight input: %s" % flight_input_controller.get_display_name()
+	)
 	flight_debug.submit("SpeedLabel", "Speed: %.1f m/s" % (velocity.length() * velocity.sign().z))
 	flight_debug.submit("HorizontalSpeedLabel", "Horizontal Speed: %.1f m/s" % Vector2(
 			velocity.x,

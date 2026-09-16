@@ -2,21 +2,34 @@ class_name FlightInputController
 extends RefCounted
 
 ## Translates device input and camera state into a semantic FlightIntent.
-## Future flight/combat modes and modifiers belong here, not in Player or the
-## aerodynamic controller.
+## Concrete control schemes select their matching camera behavior.
 var freelook_flight_direction := Vector3.FORWARD
 var was_freelooking := false
-var fixed_wing_mode := false
 var current_flight_intent := FlightIntent.new()
-var steering_frame: Node3D #This is the camera direction that holds where we're pointing.
+var camera_controller: PlayerCamera
+var camera_behavior: FlightCameraBehavior
 
 const GENTLE_TURN_ANGLE := deg_to_rad(10.0)
 const FULL_AGGRESSION_TURN_ANGLE := deg_to_rad(60.0)
 
-func get_flight_intent(current_velocity: Vector3) -> FlightIntent:
-	if Input.is_action_just_pressed("toggle_fixed_wing"):
-		fixed_wing_mode = not fixed_wing_mode
+func activate(new_camera_controller: PlayerCamera) -> void:
+	camera_controller = new_camera_controller
+	if not camera_behavior:
+		camera_behavior = create_camera_behavior()
+	camera_controller.set_flight_camera_behavior(camera_behavior)
+	freelook_flight_direction = _get_steering_direction()
+	was_freelooking = Input.is_action_pressed("freelook")
 
+
+func get_display_name() -> String:
+	return "Flight Input"
+
+
+func create_camera_behavior() -> FlightCameraBehavior:
+	return FlightCameraBehavior.new()
+
+
+func get_flight_intent(current_velocity: Vector3) -> FlightIntent:
 	var steering_direction := _get_steering_direction()
 	var freelooking := Input.is_action_pressed("freelook")
 	if freelooking and not was_freelooking:
@@ -34,7 +47,7 @@ func get_flight_intent(current_velocity: Vector3) -> FlightIntent:
 			intent.desired_direction,
 			current_velocity
 	)
-	intent.force_wing_direction = fixed_wing_mode
+	intent.force_wing_direction = false
 	intent.wants_airbrake = Input.is_key_pressed(KEY_SHIFT)
 	intent.wants_flap = movement_strength > 0.0 or Input.is_action_pressed("jump")
 	intent.wants_upward_flap = Input.is_action_pressed("jump")
@@ -46,8 +59,8 @@ func get_movement_input() -> Vector2:
 
 
 func _get_steering_direction() -> Vector3:
-	if steering_frame:
-		return -steering_frame.global_basis.z.normalized()
+	if camera_controller:
+		return camera_controller.get_steering_direction()
 	return Vector3.FORWARD
 
 

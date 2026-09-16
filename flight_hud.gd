@@ -1,7 +1,7 @@
 extends Control
 
 @export var player: Player
-@export var camera: Camera3D
+@export var camera: PlayerCamera
 
 @onready var desired_marker: Label = $IntendedDirection
 @onready var velocity_marker: Label = $ActualDirection
@@ -27,6 +27,7 @@ func _ready() -> void:
 
 # Called every frame. 'delta' is the elapsed time since the previous frame.
 func _process(delta: float) -> void:
+	place_reticle(aim_marker, camera.get_control_cursor_screen_position())
 	var intent_direction := player.player_intended_direction()
 	var player_velocity := player.velocity
 	var requested_aerodynamic_force := player.flyer_state.info_requested_aerodynamic_force

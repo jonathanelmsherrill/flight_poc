@@ -3,6 +3,7 @@ extends RefCounted
 
 ## Player-facing flight request. This intentionally contains no aerodynamic
 ## details such as angle of attack or wing deployment.
+## This is the input to the flight controller, which will decide how to position the wings and such
 var desired_direction := Vector3.FORWARD
 var maneuver_aggression := 0.0
 var turn_response_multiplier := 1.0

@@ -1,8 +1,9 @@
 class_name Wings
 extends Node3D
 
-## Two visual wing panels. Their orientation is derived from the same surface
-## normal consumed by FlightPhysics; this node has no influence on simulation.
+## Two visual wing panels. Their plane is defined by the controller's surface
+## normal. Flyer velocity resolves the rotation around that normal without
+## allowing wind to alter the displayed command.
 const WING_SPAN := 2.4
 const WING_ROOT_WIDTH := 0.25
 const WING_CHORD := 1.1
@@ -17,7 +18,7 @@ func _ready() -> void:
 
 
 func update_aerodynamic_pose(
-		air_velocity: Vector3,
+		flight_velocity: Vector3,
 		wing_surface_normal: Vector3,
 		shoulder_position: Vector3
 ) -> void:
@@ -25,9 +26,9 @@ func update_aerodynamic_pose(
 		return
 
 	var surface_normal := wing_surface_normal.normalized()
-	if air_velocity.length_squared() >= MIN_DIRECTION_LENGTH_SQUARED:
-		var airflow_direction := air_velocity.normalized()
-		var requested_span_direction := airflow_direction.cross(surface_normal)
+	if flight_velocity.length_squared() >= MIN_DIRECTION_LENGTH_SQUARED:
+		var flight_direction := flight_velocity.normalized()
+		var requested_span_direction := flight_direction.cross(surface_normal)
 		if requested_span_direction.length_squared() >= MIN_DIRECTION_LENGTH_SQUARED:
 			requested_span_direction = requested_span_direction.normalized()
 			if requested_span_direction.dot(span_direction) < 0.0:

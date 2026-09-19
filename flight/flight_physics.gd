@@ -73,21 +73,21 @@ func integrate(
 	flyer_state.info_effective_aoa = 0.0
 	# Every aerodynamic calculation in this tick uses this one snapshot. The
 	# controller built the requested surface normal from the same air velocity.
-	var air_velocity := flyer_state.velocity - flyer_state.air_velocity_world
-	var airspeed := air_velocity.length()
+	var relative_air_velocity := flyer_state.velocity - flyer_state.local_air_velocity
+	var airspeed := relative_air_velocity.length()
 	var updated_velocity := flyer_state.velocity
 
 	if airspeed >= MIN_AIRSPEED:
-		var effective_aoa := _get_effective_aoa(flyer_state.wing_normal, air_velocity)
+		var effective_aoa := _get_effective_aoa(flyer_state.wing_normal, relative_air_velocity)
 		flyer_state.info_effective_aoa = effective_aoa
-		var lift_direction := _get_lift_direction(flyer_state.wing_normal, air_velocity)
+		var lift_direction := _get_lift_direction(flyer_state.wing_normal, relative_air_velocity)
 		var dynamic_force := flyer_profile.aerodynamic_authority * airspeed * airspeed
 		var lift_force_magnitude := dynamic_force * get_lift_coefficient(effective_aoa)
 		var high_aoa_drag_force := dynamic_force * get_high_aoa_drag_coefficient(effective_aoa)
 		var lift_force := lift_direction * lift_force_magnitude
 		var high_aoa_drag_vector := _get_surface_pressure_drag_force(
 				flyer_state.wing_normal,
-				air_velocity,
+				relative_air_velocity,
 				high_aoa_drag_force
 		)
 		var direct_wing_force := (lift_force + high_aoa_drag_vector).length()
@@ -103,7 +103,7 @@ func integrate(
 		result.lift_force = lift_force
 		updated_velocity = _apply_energy_neutral_lift(
 			updated_velocity,
-			flyer_state.air_velocity_world,
+			flyer_state.local_air_velocity,
 			result.lift_force,
 			airspeed,
 			flyer_profile.base_mass,
@@ -118,11 +118,11 @@ func integrate(
 		result.high_aoa_drag_force = high_aoa_drag_force
 		result.high_aoa_drag_vector = high_aoa_drag_vector
 		var induced_drag_vector := _get_airflow_drag_force(
-				air_velocity,
+				relative_air_velocity,
 				result.induced_drag_force
 		)
 		var parasite_drag_vector := _get_airflow_drag_force(
-				air_velocity,
+				relative_air_velocity,
 				result.parasite_drag_force
 		)
 		result.drag_force = induced_drag_vector + parasite_drag_vector + high_aoa_drag_vector
@@ -133,7 +133,7 @@ func integrate(
 		)
 		updated_velocity = _apply_drag(
 				updated_velocity,
-				air_velocity,
+				relative_air_velocity,
 				result.induced_drag_force + result.parasite_drag_force,
 				flyer_profile.base_mass,
 				delta

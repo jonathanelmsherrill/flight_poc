@@ -1,0 +1,13 @@
+[gd_scene format=3 uid="uid://dpxctufu4mb7x"]
+
+[ext_resource type="Script" uid="uid://cd6ll3q8gm8x1" path="res://scene_elements/wind_area_3d.gd" id="1_u4hw7"]
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_u4hw7"]
+
+[node name="WindArea3D" type="Area3D" unique_id=713803290]
+script = ExtResource("1_u4hw7")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1227822478]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+shape = SubResource("CylinderShape3D_u4hw7")
+debug_color = Color(0.42000002, 0.8259999, 1, 0.41960785)

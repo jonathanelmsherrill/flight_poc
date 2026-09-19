@@ -24,6 +24,7 @@ var time_since_flap := 10.0
 var stamina_energy_kilojoules := 0.0
 var reported_energy_used_joules := 0.0
 var flap_tween: Tween
+var active_wind_areas: Array[WindArea3D] = []
 
 @onready var camera_pitch: Node3D = $CameraPivot/CameraPitch
 @onready var player_camera: PlayerCamera = $CameraPivot/CameraPitch/FreelookPivot/FreelookPitch/SpringArm3D/Camera3D
@@ -31,6 +32,8 @@ var flap_tween: Tween
 @onready var visual_root: Node3D = $VisualRoot
 @onready var wings: Wings = $Wings
 @onready var wing_force_arrow: DebugForceArrow = $WingForceArrow
+
+
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -42,6 +45,8 @@ func _ready() -> void:
 	stamina_bar.max_value = flyer_profile.stamina_capacity_kilojoules
 	stamina_bar.value = stamina_energy_kilojoules
 	flight_debug = FlightDebug.new($CanvasLayer/DebugContainer)
+
+
 
 
 func _physics_process(delta: float) -> void:
@@ -76,9 +81,8 @@ func player_intended_direction() -> Vector3:
 
 ## Capsule Girl's visible forward direction follows her flight path.
 func visible_flight_direction() -> Vector3:
-	var air_velocity := velocity - flyer_state.air_velocity_world
-	if flyer_state.is_airborne and air_velocity.length_squared() >= 0.0001:
-		return air_velocity.normalized()
+	if flyer_state.is_airborne and velocity.length_squared() >= 0.0001:
+		return velocity.normalized()
 	return flyer_state.body_direction.normalized()
 
 
@@ -100,6 +104,8 @@ func apply_ground_movement(
 	var camera_right := camera_pitch.global_basis.x
 	camera_forward.y = 0.0
 	camera_right.y = 0.0
+	if input_vector.length_squared() >= 0.0001 and camera_forward.length_squared() >= 0.0001:
+		flyer_state.body_direction = camera_forward.normalized()
 	var ground_direction := (
 			camera_right.normalized() * input_vector.x
 			+ camera_forward.normalized() * -input_vector.y
@@ -186,8 +192,9 @@ func inside_power_stroke() -> bool:
 
 
 func update_flyer_state() -> void:
+	flyer_state.local_air_velocity = get_environment_wind()
 	flyer_state.velocity = velocity
-	flyer_state.air_relative_velocity = velocity - flyer_state.air_velocity_world
+	flyer_state.air_relative_velocity = velocity - flyer_state.local_air_velocity
 	flyer_state.airspeed = flyer_state.air_relative_velocity.length()
 	flyer_state.is_airborne = not is_on_floor()
 
@@ -219,18 +226,17 @@ func update_stamina_energy(delta: float) -> void:
 
 
 func update_visual_orientation(_delta: float) -> void:
-	var air_velocity := velocity - flyer_state.air_velocity_world
 	# The pill's local up axis follows its travel direction in flight. Walking
-	# retains the upright pose so it reads as a standing character.
-	if flyer_state.is_airborne and air_velocity.length_squared() >= 0.0001:
-		visual_root.basis = _basis_with_local_up(air_velocity.normalized())
+	# retains the upright pose and faces toward the camera's aim direction.
+	if flyer_state.is_airborne and velocity.length_squared() >= 0.0001:
+		visual_root.basis = _basis_with_local_up(velocity.normalized())
 	elif not flyer_state.is_airborne:
-		visual_root.basis = _basis_with_local_up(Vector3.UP)
+		visual_root.basis = _basis_with_up_and_forward(Vector3.UP, flyer_state.body_direction)
 	var shoulder_position := visual_root.global_position + (
 			visual_root.global_basis.y * VISUAL_SHOULDER_OFFSET
 	)
 	wings.update_aerodynamic_pose(
-			air_velocity,
+			velocity,
 		flyer_state.wing_normal,
 		shoulder_position
 	)
@@ -246,6 +252,20 @@ func _basis_with_local_up(up_direction: Vector3) -> Basis:
 	return Basis(right, up_direction, back)
 
 
+func _basis_with_up_and_forward(up_direction: Vector3, forward_direction: Vector3) -> Basis:
+	var up := up_direction.normalized()
+	var forward := forward_direction - up * forward_direction.dot(up)
+	if forward.length_squared() < 0.0001:
+		forward = Vector3.FORWARD
+		if absf(forward.dot(up)) > 0.95:
+			forward = Vector3.RIGHT
+		forward -= up * forward.dot(up)
+	forward = forward.normalized()
+	var right := forward.cross(up).normalized()
+	var back := right.cross(up).normalized()
+	return Basis(right, up, back)
+
+
 func flap_visual() -> void:
 	if flap_tween:
 		flap_tween.kill()
@@ -256,16 +276,13 @@ func flap_visual() -> void:
 
 
 func update_debug_readouts() -> void:
-	flight_debug.submit(
-			"FlightInputModeLabel",
-			"Flight input: %s" % flight_input_controller.get_display_name()
-	)
 	flight_debug.submit("SpeedLabel", "Speed: %.1f m/s" % (velocity.length() * velocity.sign().z))
 	flight_debug.submit("HorizontalSpeedLabel", "Horizontal Speed: %.1f m/s" % Vector2(
 			velocity.x,
 			velocity.z
 	).length())
 	flight_debug.submit("VerticalSpeedLabel", "Vertical Speed: %.1f m/s" % velocity.y)
+	flight_debug.submit("WindVelocityLabel", "World wind: %s m/s" % flyer_state.local_air_velocity)
 	flight_debug.submit("AoaLabel", "AoA: %.1f°" % rad_to_deg(flyer_state.info_effective_aoa))
 	var kinetic_energy := 0.5 * flyer_profile.base_mass * velocity.length_squared()
 	var potential_energy := flyer_profile.base_mass * FlightPhysics.GRAVITY * global_position.y
@@ -274,18 +291,27 @@ func update_debug_readouts() -> void:
 	var lift_acceleration := (physics_result.lift_force / flyer_profile.base_mass).dot(Vector3.UP)
 	flight_debug.submit("LiftLabel", "Lift: %.0f%% gravity" % (lift_acceleration / FlightPhysics.GRAVITY * 100.0))
 	flight_debug.submit("DragLabel", "Drag: %.1f m/s²" % physics_result.get_drag_acceleration(flyer_profile))
-	var high_aoa_horizontal_force := Vector2(
-			physics_result.high_aoa_drag_vector.x,
-			physics_result.high_aoa_drag_vector.z
-	).length()
-	flight_debug.submit("HighAoaDragLabel", "High AoA drag: H %.0f N, V %.0f N" % [
-		high_aoa_horizontal_force,
-		physics_result.high_aoa_drag_vector.y
-	])
-	flight_debug.submit("LiftVelocityDotLabel", "Lift force dot velocity: %.1f W" % physics_result.lift_force.dot(velocity))
-	flight_debug.submit("DragVelocityDotLabel", "Drag force dot velocity: %.1f W" % physics_result.drag_force.dot(velocity))
 
 
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+## Wind
+
+
+func enter_wind_area(area: WindArea3D) -> void:
+	if not active_wind_areas.has(area):
+		active_wind_areas.append(area)
+
+func exit_wind_area(area: WindArea3D) -> void:
+	active_wind_areas.erase(area)
+
+func get_environment_wind() -> Vector3:
+	var wind := Vector3.ZERO
+
+	for area in active_wind_areas:
+		wind += area.get_wind_at(global_position)
+
+	return wind

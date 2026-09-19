@@ -6,7 +6,7 @@ const GENTLE_MIN_RESPONSE_TIME := 0.6 #For small turns, we take at least this lo
 const AGGRESSIVE_MIN_TURN_RESPONSE_TIME := 0.6 # 
 const GENTLE_MAX_TURN_RATE:= PI/8.0 #For gentle turns, pi/4 = 45o/second 
 const AGGRESSIVE_MAX_TURN_RATE := PI/1.5 # For aggressive turns   
-const MIN_AIRSPEED := 0.2
+const MIN_FLIGHT_SPEED := 0.2
 
 ## This takes the intent from the player controller and tries to translate it into flight directions.
 ## Note that with discrete physics it matters whether gravity is added to the current velocity before
@@ -22,9 +22,11 @@ func get_control_command(
 	var desired_direction := _safe_normalized(intent.desired_direction, flyer_state.body_direction)
 	command.target_body_direction = desired_direction
 
-	var air_velocity := flyer_state.air_relative_velocity
-	var airspeed := flyer_state.airspeed
-	if airspeed < MIN_AIRSPEED:
+	# Control follows the flyer's world-space trajectory. Wind remains an
+	# aerodynamic input in FlightPhysics, so the player must react to drafts.
+	var flight_velocity := flyer_state.velocity
+	var flight_speed := flight_velocity.length()
+	if flight_speed < MIN_FLIGHT_SPEED:
 		command.target_wing_surface_normal = _safe_normalized(
 				flyer_state.wing_normal,
 				Vector3.UP
@@ -32,7 +34,7 @@ func get_control_command(
 		command.info_intended_aoa = 0.0
 		return command
 
-	var flight_direction := air_velocity / airspeed #aka air_velocity.normalize
+	var flight_direction := flight_velocity / flight_speed
 	if intent.wants_airbrake:
 		# Present the entire wing surface to the airflow. FlightPhysics resolves
 		# this into its maximum separated-flow pressure drag.
@@ -40,7 +42,7 @@ func get_control_command(
 		command.info_intended_aoa = PI * 0.0
 		command.info_requested_aerodynamic_force = -flight_direction * (
 				flyer_profile.aerodynamic_authority
-				* airspeed * airspeed
+				* flight_speed * flight_speed
 				* FlightPhysics.get_high_aoa_drag_coefficient(command.info_intended_aoa)
 		)
 		return command
@@ -48,8 +50,8 @@ func get_control_command(
 	var steering_direction := _orthogonal_complement(desired_direction, flight_direction)
 
 	# Wings can only oppose the component of gravity perpendicular to the
-	# current air path. Gravity along the path remains, naturally exchanging
-	# potential energy and airspeed during climbs and dives.
+	# current flight path. Gravity along the path remains, naturally exchanging
+	# potential energy and speed during climbs and dives.
 	var gravity_force := Vector3.DOWN * flyer_profile.base_mass * GRAVITY
 	# And we want to preemptively oppose it, so steering_force takes us where we want to go from here
 	var support_force := -_orthogonal_component(gravity_force, flight_direction)
@@ -59,8 +61,8 @@ func get_control_command(
 	# Divide by turn response time to shrink/grow.
 	# Differs only for very large turns (like 180o). We compute 'what would it take to just up and reverse direction'
 	# but of course we can't do that, we have to curve a circle, and this code ends up being about 50% too small. 
-#	var desired_velocity := desired_direction * airspeed
-#	var required_velocity_change := desired_velocity - air_velocity
+#	var desired_velocity := desired_direction * flight_speed
+#	var required_velocity_change := desired_velocity - flight_velocity
 #	var steering_force := steering_direction * (
 #		flyer_profile.base_mass
 #		* required_velocity_change.length()
@@ -70,9 +72,9 @@ func get_control_command(
 	#Option 2: More accurate, but mathematically more complex.
 	# Take omega as our desired turn rate in radians/second = turn_angle/turn_response_time  
 	# This involves the flyer tracing out an arc each second with length equal to our speed. 
-	# One second of that arc is r*omega long, so the radius of the arc is airspeed/omega = r
+	# One second of that arc is r*omega long, so the radius of the arc is flight_speed/omega = r
 	# The required normal centripetal acceleration to curve a circle with turn radius r is speed^2/r.
-	# Since r= airspeed/omega, the centripetal acceleration required is speed*omega. 
+	# Since r= flight_speed/omega, the centripetal acceleration required is speed*omega.
 	# So a normal steering acceleration of speed*turn_angle/response_time will curve an arc over 
 	# turn_angle radians in response_time seconds.  Or use turn_rate directly if we max that. 
 	var max_turn_rate := lerpf(
@@ -92,7 +94,7 @@ func get_control_command(
 	desired_turn_rate *= intent.turn_response_multiplier
 	# The centripetal acceleration described above.
 	var steering_force := steering_direction * (
-			flyer_profile.base_mass * airspeed * desired_turn_rate
+			flyer_profile.base_mass * flight_speed * desired_turn_rate
 	)
 
 	# A fixed wing command is purely the selected turn plane.  Do not fold the
@@ -107,12 +109,12 @@ func get_control_command(
 	command.info_intended_aoa = choose_target_aoa(
 			intent,
 			requested_force.length(),
-			air_velocity,
+			flight_velocity,
 			flyer_profile
 	)
 	var gravity_fighting_speed := flyer_profile.get_gravity_fighting_speed(command.info_intended_aoa)
-	#if gravity_fighting_speed > 0.0 and airspeed < gravity_fighting_speed*0.9:
-	#		command.info_intended_aoa *= airspeed / (gravity_fighting_speed*0.9)
+	#if gravity_fighting_speed > 0.0 and flight_speed < gravity_fighting_speed*0.9:
+	#		command.info_intended_aoa *= flight_speed / (gravity_fighting_speed*0.9)
 
 	if intent.force_wing_direction:
 		# Forced-wing modes place the wings three quarters of the way from the
@@ -121,12 +123,12 @@ func get_control_command(
 		# player's full requested direction.
 		var wing_direction := flight_direction.slerp(desired_direction, 0.75).normalized()
 		command.target_wing_surface_normal = _safe_normalized(
-				_orthogonal_complement(air_velocity, wing_direction),
+				_orthogonal_complement(flight_velocity, wing_direction),
 				flyer_state.wing_normal
 		) * -1
 		command.info_requested_aerodynamic_force = (
 				command.target_wing_surface_normal
-				* airspeed * airspeed * flyer_profile.aerodynamic_authority
+				* flight_speed * flight_speed * flyer_profile.aerodynamic_authority
 		)
 		command.info_intended_aoa = _get_surface_normal_aoa(
 				command.target_wing_surface_normal,
@@ -145,16 +147,16 @@ func get_control_command(
 func choose_target_aoa(
 		intent: FlightIntent,
 		required_force: float,
-		air_velocity: Vector3,
+		flight_velocity: Vector3,
 		flyer_profile: FlyerProfile
 ) -> float:
-	var airspeed := air_velocity.length()
-	if airspeed < MIN_AIRSPEED:
+	var flight_speed := flight_velocity.length()
+	if flight_speed < MIN_FLIGHT_SPEED:
 		return 0.0
 
 	# ------------- Typical angle of attack range -----------------
 	# Our base force factor - multiply by aoe lift factor to get actual lift. 
-	var wing_force_base_factor := flyer_profile.aerodynamic_authority * airspeed * airspeed
+	var wing_force_base_factor := flyer_profile.aerodynamic_authority * flight_speed * flight_speed
 	if wing_force_base_factor <= 0.001:
 		return 0.0
 	# What aoe lift multiple do we need?

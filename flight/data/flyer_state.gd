@@ -4,7 +4,7 @@ extends RefCounted
 ## Mutable runtime state shared by the flight controller and physics engine.
 ## Player refreshes the velocity-derived fields before each simulation step.
 var velocity := Vector3.ZERO
-var air_velocity_world := Vector3.ZERO
+var local_air_velocity := Vector3.ZERO
 var air_relative_velocity := Vector3.ZERO
 var airspeed := 0.0
 var is_airborne := false

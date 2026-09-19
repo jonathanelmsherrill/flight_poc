@@ -1,0 +1,37 @@
+[gd_scene format=3 uid="uid://bnd7htq3lvwhm"]
+
+[ext_resource type="ArrayMesh" uid="uid://ijv7bjo1x7de" path="res://floating_rock_01.tres" id="2_22v5p"]
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_80sxs"]
+frequency = 0.0684
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_80sxs"]
+noise = SubResource("FastNoiseLite_80sxs")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_22v5p"]
+albedo_color = Color(0.63, 0.581805, 0.5733, 1)
+albedo_texture = SubResource("NoiseTexture2D_80sxs")
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_gg3ot"]
+frequency = 0.0132
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_nsyxc"]
+noise = SubResource("FastNoiseLite_gg3ot")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_00mi2"]
+albedo_color = Color(0.51, 0.51, 0.51, 1)
+albedo_texture = SubResource("NoiseTexture2D_nsyxc")
+
+[node name="RockWithHole" type="CSGCombiner3D" unique_id=186544470]
+use_collision = true
+
+[node name="CSGMesh3D" type="CSGMesh3D" parent="." unique_id=2142421807]
+mesh = ExtResource("2_22v5p")
+material = SubResource("StandardMaterial3D_22v5p")
+
+[node name="CSGCylinder3D" type="CSGCylinder3D" parent="." unique_id=134182014]
+transform = Transform3D(0.17364822, -0.9848077, 0, 0.9848077, 0.17364822, 0, 0, 0, 1, 0, 0, 0)
+operation = 2
+radius = 0.459
+height = 2.819
+material = SubResource("StandardMaterial3D_00mi2")

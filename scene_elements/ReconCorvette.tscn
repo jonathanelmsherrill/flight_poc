@@ -1,0 +1,14 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_hull"]
+albedo_color = Color(0.16, 0.24, 0.32, 1)
+metallic = 0.7
+roughness = 0.32
+
+[node name="ReconCorvette" type="Node3D"]
+
+[node name="Hull" type="CSGPolygon3D" parent="."]
+polygon = PackedVector2Array(-13, -3, 13, -3, 9, 3, -9, 3)
+depth = 36.0
+material = SubResource("StandardMaterial3D_hull")
+use_collision = true

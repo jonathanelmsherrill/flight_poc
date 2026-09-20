@@ -4,6 +4,7 @@
 [ext_resource type="Script" uid="uid://dny28a1tutybb" path="res://flight/flyer_profile.gd" id="2_xnmnc"]
 [ext_resource type="PackedScene" uid="uid://bnd7htq3lvwhm" path="res://test_levels/t1_floating_rock.tscn" id="3_rln6y"]
 [ext_resource type="PackedScene" uid="uid://dpxctufu4mb7x" path="res://scene_elements/WindArea3D.tscn" id="4_e6cto"]
+[ext_resource type="PackedScene" path="res://scene_elements/ReconCorvette.tscn" id="5_recon"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_53s12"]
 size = Vector3(1800, 0.5, 180)
@@ -65,8 +66,11 @@ surface_material_override/0 = SubResource("StandardMaterial3D_cgkto")
 [node name="CollisionShape3D3" type="CollisionShape3D" parent="Mountain" unique_id=462801271]
 shape = SubResource("ConvexPolygonShape3D_frcqw")
 
+[node name="ReconCorvette" parent="." unique_id=267416071 instance=ExtResource("5_recon")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 30, 0)
+
 [node name="Player" parent="." unique_id=349778450 instance=ExtResource("1_frcqw")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.428, 3, 1.072)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 34, 0)
 flyer_profile = SubResource("Resource_frcqw")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=784581403]

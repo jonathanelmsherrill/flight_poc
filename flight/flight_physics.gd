@@ -39,7 +39,11 @@ func calculate_profile_performance(flyer_profile: FlyerProfile) -> void:
 				minimum_speed,
 				flyer_profile.aerodynamic_authority
 		)
-		var parasite_drag := flyer_profile.parasite_drag_coefficient * minimum_speed * minimum_speed
+		var surface_speed := minimum_speed * cos(sample_aoa)
+		var parasite_drag := (
+				flyer_profile.parasite_drag_coefficient
+				* surface_speed * surface_speed
+		)
 		var lift_to_drag := lift_force / maxf(induced_drag + parasite_drag, 0.0001)
 		if lift_to_drag > best_lift_to_drag:
 			best_lift_to_drag = lift_to_drag
@@ -71,22 +75,33 @@ func integrate(
 	result.wing_aerodynamic_force = Vector3.ZERO
 	result.flap_energy_used_joules = 0.0
 	flyer_state.info_effective_aoa = 0.0
-	# Every aerodynamic calculation in this tick uses this one snapshot. The
-	# controller built the requested surface normal from the same air velocity.
+	# Every aerodynamic calculation in this tick uses this one airflow snapshot.
 	var relative_air_velocity := flyer_state.velocity - flyer_state.local_air_velocity
 	var airspeed := relative_air_velocity.length()
 	var updated_velocity := flyer_state.velocity
 
 	if airspeed >= MIN_AIRSPEED:
+		var surface_normal := flyer_state.wing_normal.normalized()
+		var normal_air_velocity := (
+				surface_normal * relative_air_velocity.dot(surface_normal)
+		)
+		var surface_air_velocity := relative_air_velocity - normal_air_velocity
+		var normal_airspeed := normal_air_velocity.length()
+		var surface_airspeed := surface_air_velocity.length()
 		var effective_aoa := _get_effective_aoa(flyer_state.wing_normal, relative_air_velocity)
 		flyer_state.info_effective_aoa = effective_aoa
 		var lift_direction := _get_lift_direction(flyer_state.wing_normal, relative_air_velocity)
 		var dynamic_force := flyer_profile.aerodynamic_authority * airspeed * airspeed
 		var lift_force_magnitude := dynamic_force * get_lift_coefficient(effective_aoa)
-		var high_aoa_drag_force := dynamic_force * get_high_aoa_drag_coefficient(effective_aoa)
+		var high_aoa_drag_force := (
+				flyer_profile.aerodynamic_authority
+				* normal_airspeed * normal_airspeed
+				* PLATE_DRAG_COEFFICIENT
+				* _get_flow_separation(effective_aoa)
+		)
 		var lift_force := lift_direction * lift_force_magnitude
 		var high_aoa_drag_vector := _get_surface_pressure_drag_force(
-				flyer_state.wing_normal,
+				surface_normal,
 				relative_air_velocity,
 				high_aoa_drag_force
 		)
@@ -98,7 +113,6 @@ func integrate(
 			high_aoa_drag_vector *= structural_scale
 			lift_force_magnitude = lift_force.length()
 			high_aoa_drag_force = high_aoa_drag_vector.length()
-		direct_wing_force = (lift_force + high_aoa_drag_vector).length()
 
 		result.lift_force = lift_force
 		updated_velocity = _apply_energy_neutral_lift(
@@ -110,11 +124,14 @@ func integrate(
 			delta
 		)
 		result.induced_drag_force = get_induced_drag_force(
-			direct_wing_force,
+			lift_force_magnitude,
 			airspeed,
 			flyer_profile.aerodynamic_authority
 		)
-		result.parasite_drag_force = flyer_profile.parasite_drag_coefficient * airspeed * airspeed
+		result.parasite_drag_force = (
+				flyer_profile.parasite_drag_coefficient
+				* surface_airspeed * surface_airspeed
+		)
 		result.high_aoa_drag_force = high_aoa_drag_force
 		result.high_aoa_drag_vector = high_aoa_drag_vector
 		var induced_drag_vector := _get_airflow_drag_force(
@@ -122,7 +139,7 @@ func integrate(
 				result.induced_drag_force
 		)
 		var parasite_drag_vector := _get_airflow_drag_force(
-				relative_air_velocity,
+				surface_air_velocity,
 				result.parasite_drag_force
 		)
 		result.drag_force = induced_drag_vector + parasite_drag_vector + high_aoa_drag_vector
@@ -131,16 +148,9 @@ func integrate(
 				+ high_aoa_drag_vector
 				+ induced_drag_vector
 		)
-		updated_velocity = _apply_drag(
-				updated_velocity,
-				relative_air_velocity,
-				result.induced_drag_force + result.parasite_drag_force,
-				flyer_profile.base_mass,
-				delta
-		)
 		updated_velocity = _apply_force(
 				updated_velocity,
-				high_aoa_drag_vector,
+				induced_drag_vector + parasite_drag_vector + high_aoa_drag_vector,
 				flyer_profile.base_mass,
 				delta
 		)
@@ -164,15 +174,22 @@ static func get_lift_coefficient(alpha: float) -> float:
 	var absolute_alpha := clampf(absf(alpha), 0.0, MAX_AOA)
 	var attached_flow_lift := LIFT_SLOPE * absolute_alpha
 	var plate_lift := PLATE_LIFT_COEFFICIENT * sin(absolute_alpha) * cos(absolute_alpha)
-	var separation := smoothstep(STALL_ONSET_AOA, FULL_SEPARATION_AOA, absolute_alpha) 
+	var separation := _get_flow_separation(absolute_alpha)
 	return lerpf(attached_flow_lift, plate_lift, separation)
 
 
 static func get_high_aoa_drag_coefficient(alpha: float) -> float:
 	var absolute_alpha := clampf(absf(alpha), 0.0, MAX_AOA)
 	var plate_drag := PLATE_DRAG_COEFFICIENT * sin(absolute_alpha) * sin(absolute_alpha)
-	var separation := smoothstep(STALL_ONSET_AOA, FULL_SEPARATION_AOA, absolute_alpha)
-	return plate_drag * separation
+	return plate_drag * _get_flow_separation(absolute_alpha)
+
+
+static func _get_flow_separation(alpha: float) -> float:
+	return smoothstep(
+			STALL_ONSET_AOA,
+			FULL_SEPARATION_AOA,
+			absf(alpha)
+	)
 
 
 static func get_maximum_lift_aoa() -> float:
@@ -246,18 +263,6 @@ func _apply_energy_neutral_lift(
 	if air_velocity_after_lift.length_squared() < 0.0001:
 		return updated_velocity
 	return air_velocity_world + air_velocity_after_lift.normalized() * airspeed
-
-
-func _apply_drag(
-		velocity: Vector3,
-		air_velocity: Vector3,
-		drag_force: float,
-		mass: float,
-		delta: float
-) -> Vector3:
-	if drag_force <= 0.0 or air_velocity.length_squared() < 0.0001:
-		return velocity
-	return velocity - air_velocity.normalized() * drag_force / mass * delta
 
 
 func _get_airflow_drag_force(

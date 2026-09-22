@@ -5,8 +5,9 @@ extends CharacterBody3D
 
 const GROUND_MOVE_SPEED := 8.0
 const JUMP_VELOCITY := 4.5
-const BODY_DIRECTION_RESPONSE := 6.0
-const WING_DIRECTION_RESPONSE := 18.0
+const BODY_DIRECTION_RESPONSE := 2.0
+const WING_DIRECTION_RESPONSE := 3.0
+const MIN_WING_DIRECTION_FORCE := 10.0
 const VISUAL_SHOULDER_OFFSET := 0.65
 
 var ground_input_controller := GroundInputController.new()
@@ -25,6 +26,7 @@ var stamina_energy_kilojoules := 0.0
 var reported_energy_used_joules := 0.0
 var flap_tween: Tween
 var active_wind_areas: Array[WindArea3D] = []
+var debug_target_wing_normal := Vector3.UP
 
 @onready var camera_pitch: Node3D = $CameraPivot/CameraPitch
 @onready var player_camera: PlayerCamera = $CameraPivot/CameraPitch/FreelookPivot/FreelookPitch/SpringArm3D/Camera3D
@@ -38,6 +40,7 @@ var active_wind_areas: Array[WindArea3D] = []
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	flyer_state.body_direction = -global_basis.z
+	flyer_state.body_up_direction = global_basis.y
 	flyer_state.wing_normal = global_basis.y
 	activate_flight_input_mode(0)
 	flight_physics.calculate_profile_performance(flyer_profile)
@@ -67,7 +70,10 @@ func _physics_process(delta: float) -> void:
 		# Flight input controller divines player intent
 		# The flight controller then tries to translate that into a physical state
 		# And then the physics engine determines what happens.
-		apply_flight_movement(flight_input_controller.get_flight_intent(velocity), delta)
+		apply_flight_movement(
+				flight_input_controller.get_flight_intent(flyer_state.air_relative_velocity),
+				delta
+		)
 
 	update_stamina_energy(delta)
 	update_visual_orientation(delta)
@@ -106,6 +112,7 @@ func apply_ground_movement(
 	camera_right.y = 0.0
 	if input_vector.length_squared() >= 0.0001 and camera_forward.length_squared() >= 0.0001:
 		flyer_state.body_direction = camera_forward.normalized()
+	flyer_state.body_up_direction = Vector3.UP
 	var ground_direction := (
 			camera_right.normalized() * input_vector.x
 			+ camera_forward.normalized() * -input_vector.y
@@ -133,6 +140,7 @@ func apply_flight_movement(intent: FlightIntent, delta: float) -> void:
 			flyer_profile
 	)
 	flyer_state.info_requested_aerodynamic_force = control.info_requested_aerodynamic_force
+	debug_target_wing_normal = control.target_wing_surface_normal
 	update_body_and_wings(control, delta)
 	update_flap_plan(intent)
 
@@ -143,11 +151,24 @@ func apply_flight_movement(intent: FlightIntent, delta: float) -> void:
 
 
 func update_body_and_wings(control: FlightControlCommand, delta: float) -> void:
+	var previous_body_direction := flyer_state.body_direction
 	flyer_state.body_direction = rotate_direction_toward(
-			flyer_state.body_direction,
+			previous_body_direction,
 			control.target_body_direction,
 			BODY_DIRECTION_RESPONSE * flyer_profile.control_rate * delta
 	)
+	flyer_state.body_up_direction = transport_body_up(
+			previous_body_direction,
+			flyer_state.body_direction,
+			flyer_state.body_up_direction
+	)
+	flyer_state.body_up_direction =Vector3.UP
+	# A near-zero requested force has no meaningful direction. Preserve the last
+	# physical wing orientation instead of chasing normalization noise.
+	if control.info_requested_aerodynamic_force.length_squared() < (
+			MIN_WING_DIRECTION_FORCE * MIN_WING_DIRECTION_FORCE
+	):
+		return
 	flyer_state.wing_normal = rotate_direction_toward(
 			flyer_state.wing_normal,
 			control.target_wing_surface_normal,
@@ -207,6 +228,29 @@ func rotate_direction_toward(current: Vector3, target: Vector3, weight: float) -
 	return current.normalized().slerp(target.normalized(), clampf(weight, 0.0, 1.0))
 
 
+func transport_body_up(
+		previous_forward: Vector3,
+		new_forward: Vector3,
+		previous_up: Vector3
+) -> Vector3:
+	var old_forward := previous_forward.normalized()
+	var forward := new_forward.normalized()
+	var up := previous_up - old_forward * previous_up.dot(old_forward)
+	if up.length_squared() < 0.0001:
+		up = flyer_state.wing_normal - old_forward * flyer_state.wing_normal.dot(old_forward)
+	up = up.normalized()
+
+	var turn_axis := old_forward.cross(forward)
+	if turn_axis.length_squared() >= 0.0001:
+		var turn_angle := acos(clampf(old_forward.dot(forward), -1.0, 1.0))
+		up = up.rotated(turn_axis.normalized(), turn_angle)
+
+	up -= forward * up.dot(forward)
+	if up.length_squared() < 0.0001:
+		return previous_up.normalized()
+	return up.normalized()
+
+
 ## Activities report their actual energy use here. This keeps the stamina
 ## reserve independent of which system created the demand.
 func report_energy_used(energy_used_joules: float) -> void:
@@ -226,10 +270,13 @@ func update_stamina_energy(delta: float) -> void:
 
 
 func update_visual_orientation(_delta: float) -> void:
-	# The pill's local up axis follows its travel direction in flight. Walking
-	# retains the upright pose and faces toward the camera's aim direction.
+	# The pill's long local axis follows travel in flight while its local top
+	# follows the persistent body-top direction. Walking remains world-upright.
 	if flyer_state.is_airborne and velocity.length_squared() >= 0.0001:
-		visual_root.basis = _basis_with_local_up(velocity.normalized())
+		visual_root.basis = _basis_with_body_direction_and_top(
+				velocity.normalized(),
+				flyer_state.body_up_direction
+		)
 	elif not flyer_state.is_airborne:
 		visual_root.basis = _basis_with_up_and_forward(Vector3.UP, flyer_state.body_direction)
 	var shoulder_position := visual_root.global_position + (
@@ -243,13 +290,18 @@ func update_visual_orientation(_delta: float) -> void:
 	wing_force_arrow.show_force(physics_result.wing_aerodynamic_force, shoulder_position)
 
 
-func _basis_with_local_up(up_direction: Vector3) -> Basis:
-	var reference_forward := Vector3.FORWARD
-	if absf(reference_forward.dot(up_direction)) > 0.95:
-		reference_forward = Vector3.RIGHT
-	var right := reference_forward.cross(up_direction).normalized()
-	var back := right.cross(up_direction).normalized()
-	return Basis(right, up_direction, back)
+func _basis_with_body_direction_and_top(
+		body_direction: Vector3,
+		body_top_direction: Vector3
+) -> Basis:
+	var forward := body_direction.normalized()
+	var top := body_top_direction - forward * body_top_direction.dot(forward)
+	if top.length_squared() < 0.0001:
+		top = flyer_state.wing_normal - forward * flyer_state.wing_normal.dot(forward)
+	top = top.normalized()
+	var right := forward.cross(top).normalized()
+	top = right.cross(forward).normalized()
+	return Basis(right, forward, top)
 
 
 func _basis_with_up_and_forward(up_direction: Vector3, forward_direction: Vector3) -> Basis:
@@ -288,6 +340,19 @@ func update_debug_readouts() -> void:
 	var potential_energy := flyer_profile.base_mass * FlightPhysics.GRAVITY * global_position.y
 	flight_debug.submit("TotalEnergyLabel", "Total Energy: %.0f J" % (kinetic_energy + potential_energy))
 	flight_debug.submit("RequestedAerodynamicForceLabel", "Requested Aero Force: %.0f N" % flyer_state.info_requested_aerodynamic_force.length())
+	var target_wing_error := rad_to_deg(flyer_state.wing_normal.angle_to(debug_target_wing_normal))
+	var target_airflow_incidence := 0.0
+	if flyer_state.air_relative_velocity.length_squared() >= 0.0001:
+		target_airflow_incidence = absf(rad_to_deg(
+				debug_target_wing_normal.angle_to(flyer_state.air_relative_velocity)
+		) - 90.0)
+	flight_debug.submit(
+			"AerodynamicForceDifferenceLabel",
+			"Wing target error: %.1f deg | target AoA: %.1f deg" % [
+				target_wing_error,
+				target_airflow_incidence
+			]
+	)
 	var lift_acceleration := (physics_result.lift_force / flyer_profile.base_mass).dot(Vector3.UP)
 	flight_debug.submit("LiftLabel", "Lift: %.0f%% gravity" % (lift_acceleration / FlightPhysics.GRAVITY * 100.0))
 	flight_debug.submit("DragLabel", "Drag: %.1f m/s²" % physics_result.get_drag_acceleration(flyer_profile))

@@ -8,9 +8,10 @@ Aerodynamic forces use the flyer's velocity relative to the surrounding air:
 relative_air_velocity = flyer_velocity - local_air_velocity
 ```
 
-The flight controller intentionally plans from world-space flyer velocity. The
-physics engine still uses relative airflow, so wind changes the forces on the
-flyer without the controller automatically compensating for it.
+The flight controller plans turns and wing orientation from relative airflow.
+This lets a moving air mass carry the flyer's world-space trajectory: an
+updraft increases angle of attack and carries the flyer upward instead of the
+controller automatically converting the climb into forward speed.
 
 ## Splitting airflow at the wing
 
@@ -48,6 +49,17 @@ Flow separation blends that pressure drag in between the configured stall
 onset and full-separation angles.
 
 ## Current limitation
+
+### Steep-dive lateral control
+
+The controller currently clamps requested lift at zero on the camera-down side
+to prevent negative AoA and an upside-down wing-normal flip. In a fast, steep
+dive this can leave only a tiny lateral request; because aerodynamic authority
+is high, that request can still become a large force and demand a near-90° bank,
+producing an unexpectedly sharp left or right curve. `MIN_LIFT_COMMAND_FORCE`
+does not solve this at high speed. A future control pass should consider a
+small bounded negative-AoA range for gentle corrections, with inversion or a
+different maneuver required only when the request exceeds that range.
 
 A surface normal distinguishes normal airflow from airflow within the wing
 plane, but it cannot distinguish chordwise flow from spanwise flow. The current

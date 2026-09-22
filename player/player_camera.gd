@@ -59,6 +59,10 @@ func get_steering_direction() -> Vector3:
 	return -camera_pitch.global_basis.z.normalized()
 
 
+func get_control_up_direction() -> Vector3:
+	return camera_pitch.global_basis.y.normalized()
+
+
 func get_control_cursor_screen_position() -> Vector2:
 	var viewport_size := get_viewport().get_visible_rect().size
 	if not flight_camera_behavior:

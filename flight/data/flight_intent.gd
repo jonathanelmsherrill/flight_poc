@@ -5,6 +5,8 @@ extends RefCounted
 ## details such as angle of attack or wing deployment.
 ## This is the input to the flight controller, which will decide how to position the wings and such
 var desired_direction := Vector3.FORWARD
+## Camera-relative up direction used to distinguish positive from negative lift.
+var lift_up_direction := Vector3.UP
 var maneuver_aggression := 0.0
 var turn_response_multiplier := 1.0
 var force_wing_direction := false

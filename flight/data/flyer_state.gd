@@ -10,6 +10,9 @@ var airspeed := 0.0
 var is_airborne := false
 
 var body_direction := Vector3.FORWARD
+## Persistent dorsal direction. This defines the flyer's local "up" without
+## tying flight controls to world up.
+var body_up_direction := Vector3.UP
 ## Authoritative physical orientation of the wing surface.
 var wing_normal := Vector3.UP
 var current_flap_direction := Vector3.ZERO

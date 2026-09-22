@@ -92,14 +92,17 @@ func integrate(
 		flyer_state.info_effective_aoa = effective_aoa
 		var lift_direction := _get_lift_direction(flyer_state.wing_normal, relative_air_velocity)
 		var dynamic_force := flyer_profile.aerodynamic_authority * airspeed * airspeed
-		var lift_force_magnitude := dynamic_force * get_lift_coefficient(effective_aoa)
+		var signed_lift_coefficient := (
+				get_lift_coefficient(effective_aoa) * signf(effective_aoa)
+		)
+		var lift_force_magnitude := dynamic_force * absf(signed_lift_coefficient)
 		var high_aoa_drag_force := (
 				flyer_profile.aerodynamic_authority
 				* normal_airspeed * normal_airspeed
 				* PLATE_DRAG_COEFFICIENT
 				* _get_flow_separation(effective_aoa)
 		)
-		var lift_force := lift_direction * lift_force_magnitude
+		var lift_force := lift_direction * dynamic_force * signed_lift_coefficient
 		var high_aoa_drag_vector := _get_surface_pressure_drag_force(
 				surface_normal,
 				relative_air_velocity,
@@ -204,15 +207,16 @@ static func get_attached_aoa_for_lift_coefficient(lift_coefficient: float) -> fl
 	return clampf(lift_coefficient / LIFT_SLOPE, 0.0, STALL_ONSET_AOA)
 
 
-## The wing normal is the physical state. Its component along the airflow is
-## the sine of the wing's effective angle of attack.
+## The wing normal is the physical state. Because air_velocity points with the
+## flyer's motion rather than the incoming relative wind, the negative of its
+## normal component is the sine of physical angle of attack.
 func _get_effective_aoa(wing_normal: Vector3, air_velocity: Vector3) -> float:
 	if wing_normal.length_squared() < 0.0001 or air_velocity.length_squared() < 0.0001:
 		return 0.0
 	var airflow_direction := air_velocity.normalized()
 	var surface_normal := wing_normal.normalized()
 	var along_airflow := clampf(surface_normal.dot(airflow_direction), -1.0, 1.0)
-	return atan2(along_airflow, sqrt(maxf(0.0, 1.0 - along_airflow * along_airflow)))
+	return -atan2(along_airflow, sqrt(maxf(0.0, 1.0 - along_airflow * along_airflow)))
 
 
 static func get_induced_drag_force(

@@ -42,7 +42,12 @@ func get_flight_intent(current_velocity: Vector3) -> FlightIntent:
 	var intent := current_flight_intent
 	intent.desired_direction = (
 			freelook_flight_direction if freelooking else steering_direction
-		).normalized()
+	).normalized()
+	intent.lift_up_direction = (
+			camera_controller.get_control_up_direction()
+			if camera_controller
+			else Vector3.UP
+	)
 	intent.maneuver_aggression = _get_maneuver_aggression(
 			intent.desired_direction,
 			current_velocity

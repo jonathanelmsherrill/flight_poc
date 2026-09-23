@@ -4,7 +4,7 @@
 [ext_resource type="Script" uid="uid://dny28a1tutybb" path="res://flight/flyer_profile.gd" id="2_xnmnc"]
 [ext_resource type="PackedScene" uid="uid://bnd7htq3lvwhm" path="res://test_levels/t1_floating_rock.tscn" id="3_rln6y"]
 [ext_resource type="PackedScene" uid="uid://dpxctufu4mb7x" path="res://scene_elements/WindArea3D.tscn" id="4_e6cto"]
-[ext_resource type="PackedScene" path="res://scene_elements/ReconCorvette.tscn" id="5_recon"]
+[ext_resource type="PackedScene" uid="uid://k1gavde0kot5" path="res://scene_elements/ReconCorvette.tscn" id="5_recon"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_53s12"]
 size = Vector3(1800, 0.5, 180)

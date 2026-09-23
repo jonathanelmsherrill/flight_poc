@@ -57,7 +57,7 @@ surface_material_override/0 = SubResource("StandardMaterial3D_cgkto")
 shape = SubResource("BoxShape3D_53s12")
 
 [node name="Mountain" type="StaticBody3D" parent="." unique_id=1606176174]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22, 25, 127)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -634.83685, 25, 127)
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Mountain" unique_id=1212885638]
 mesh = SubResource("CylinderMesh_frcqw")
@@ -83,8 +83,11 @@ shadow_enabled = true
 environment = SubResource("Environment_frcqw")
 
 [node name="RockWithHole" parent="." unique_id=186544470 instance=ExtResource("3_rln6y")]
-transform = Transform3D(80, 0, 0, 0, 80, 0, 0, 0, 80, -465.63293, 120.12062, 113.17)
+transform = Transform3D(80, 0, 0, 0, 80, 0, 0, 0, 80, -465.04535, 119.73958, 112.668106)
 
 [node name="WindArea3D" parent="." unique_id=713803290 instance=ExtResource("4_e6cto")]
-transform = Transform3D(200, 0, 0, 0, 200, 0, 0, 0, 200, 22, 0, 77.98773)
+transform = Transform3D(200, 0, 0, 0, 200, 0, 0, 0, 200, -634.83685, 0, 77.98773)
 local_wind_velocity = Vector3(0, 25, 0)
+
+[node name="ReconCorvette2" parent="WindArea3D" unique_id=729207916 instance=ExtResource("5_recon")]
+transform = Transform3D(0.005, 0, 0, 0, 0.005, 0, 0, 0, 0.005, -0.7340839, 0.887691, -0.38993865)

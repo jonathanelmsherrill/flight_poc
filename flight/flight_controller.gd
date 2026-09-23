@@ -48,8 +48,8 @@ func get_control_command(
 	if intent.wants_airbrake:
 		# Present the entire wing surface to the airflow. FlightPhysics resolves
 		# this into its maximum separated-flow pressure drag.
-		command.target_wing_surface_normal = Vector3.UP.slerp(-1*flight_direction,0.6)
-		command.info_intended_aoa = PI * 0.0
+		command.target_wing_surface_normal = Vector3.UP.slerp(-1*flight_direction,0.9)
+		command.info_intended_aoa = PI * 0.5
 		command.info_requested_aerodynamic_force = -flight_direction * (
 				flyer_profile.aerodynamic_authority
 				* flight_speed * flight_speed

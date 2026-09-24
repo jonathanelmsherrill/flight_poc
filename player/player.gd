@@ -31,6 +31,7 @@ var debug_target_wing_normal := Vector3.UP
 @onready var camera_pitch: Node3D = $CameraPivot/CameraPitch
 @onready var player_camera: PlayerCamera = $CameraPivot/CameraPitch/FreelookPivot/FreelookPitch/SpringArm3D/Camera3D
 @onready var stamina_bar: ProgressBar = $CanvasLayer/ProgressBar
+@onready var debug_container: VBoxContainer = $CanvasLayer/DebugContainer
 @onready var visual_root: Node3D = $VisualRoot
 @onready var wings: Wings = $Wings
 @onready var wing_force_arrow: DebugForceArrow = $WingForceArrow
@@ -47,7 +48,7 @@ func _ready() -> void:
 	stamina_energy_kilojoules = flyer_profile.stamina_capacity_kilojoules
 	stamina_bar.max_value = flyer_profile.stamina_capacity_kilojoules
 	stamina_bar.value = stamina_energy_kilojoules
-	flight_debug = FlightDebug.new($CanvasLayer/DebugContainer)
+	flight_debug = FlightDebug.new(debug_container)
 
 
 
@@ -359,6 +360,9 @@ func update_debug_readouts() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if event.is_action_pressed("toggle_debug_panel"):
+		debug_container.visible = not debug_container.visible
+		get_viewport().set_input_as_handled()
 	if event.is_action_pressed("ui_cancel"):
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 

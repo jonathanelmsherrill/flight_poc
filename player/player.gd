@@ -39,7 +39,11 @@ var debug_target_wing_normal := Vector3.UP
 
 
 func _ready() -> void:
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	# Browsers only permit pointer lock during a user input callback. Requesting
+	# it here can fail while leaving the requested mode looking captured, which
+	# prevents the click handler below from retrying.
+	if not OS.has_feature("web"):
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	flyer_state.body_direction = -global_basis.z
 	flyer_state.body_up_direction = global_basis.y
 	flyer_state.wing_normal = global_basis.y
@@ -360,6 +364,12 @@ func update_debug_readouts() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed:
+		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+			get_viewport().set_input_as_handled()
+			return
+
 	if event.is_action_pressed("toggle_debug_panel"):
 		debug_container.visible = not debug_container.visible
 		get_viewport().set_input_as_handled()

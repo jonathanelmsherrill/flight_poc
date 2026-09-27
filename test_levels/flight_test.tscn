@@ -6,7 +6,7 @@
 [ext_resource type="PackedScene" uid="uid://dpxctufu4mb7x" path="res://scene_elements/WindArea3D.tscn" id="4_e6cto"]
 [ext_resource type="PackedScene" uid="uid://k1gavde0kot5" path="res://scene_elements/ReconCorvette.tscn" id="5_recon"]
 [ext_resource type="PackedScene" path="res://scene_elements/PlayerTriggerArea.tscn" id="6_trigger"]
-[ext_resource type="PackedScene" path="res://missions/FirstMission.tscn" id="7_mission"]
+[ext_resource type="PackedScene" uid="uid://df4mpxdi0vo0j" path="res://missions/FirstMission.tscn" id="7_mission"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_53s12"]
 size = Vector3(1800, 0.5, 180)

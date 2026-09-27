@@ -1,20 +1,24 @@
 class_name Wings
 extends Node3D
 
-## Two visual wing panels. Their plane is defined by the controller's surface
-## normal. Flyer velocity resolves the rotation around that normal without
-## allowing wind to alter the displayed command.
-const WING_SPAN := 2.4
-const WING_ROOT_WIDTH := 0.25
-const WING_CHORD := 1.1
+## Two articulated visual wings. Their resting plane is defined by the
+## controller's surface normal. Flyer velocity resolves the rotation around
+## that normal without allowing wind to alter the displayed command.
+const WING_ROOT_OFFSET := 0.24
+const SEGMENT_LENGTHS := [0.76, 0.74, 0.66]
+const SEGMENT_CHORDS := [1.05, 0.82, 0.58]
+const JOINT_NAMES := [&"ShoulderJoint", &"ElbowJoint", &"WristJoint"]
 const MIN_DIRECTION_LENGTH_SQUARED := 0.0001
 
 var span_direction := Vector3.RIGHT
 
+@onready var wing_animation: WingAnimation = $WingAnimation
+
 
 func _ready() -> void:
-	add_child(_make_wing("LeftWing", -1.0))
-	add_child(_make_wing("RightWing", 1.0))
+	var left_joints := _make_wing("LeftWing", -1.0)
+	var right_joints := _make_wing("RightWing", 1.0)
+	wing_animation.configure(left_joints, right_joints)
 
 
 func update_aerodynamic_pose(
@@ -55,20 +59,44 @@ func _fallback_span_direction(surface_normal: Vector3) -> Vector3:
 	return (reference - surface_normal * reference.dot(surface_normal)).normalized()
 
 
-func _make_wing(wing_name: String, side: float) -> MeshInstance3D:
-	var wing := MeshInstance3D.new()
-	wing.name = wing_name
-	wing.mesh = _make_triangle_mesh(side)
-	wing.material_override = _make_material()
-	return wing
+func _make_wing(wing_name: String, side: float) -> Array[Node3D]:
+	var wing_root := Node3D.new()
+	wing_root.name = wing_name
+	add_child(wing_root)
+
+	var joints: Array[Node3D] = []
+	var parent := wing_root
+	for segment_index in SEGMENT_LENGTHS.size():
+		var joint := Node3D.new()
+		joint.name = JOINT_NAMES[segment_index]
+		joint.position = Vector3(
+				side * (WING_ROOT_OFFSET if segment_index == 0 else SEGMENT_LENGTHS[segment_index - 1]),
+				0.0,
+				0.0 if segment_index == 0 else SEGMENT_CHORDS[segment_index - 1] * 0.08
+		)
+		parent.add_child(joint)
+
+		var panel := MeshInstance3D.new()
+		panel.name = "Panel"
+		panel.mesh = _make_triangle_mesh(
+				side,
+				SEGMENT_LENGTHS[segment_index],
+				SEGMENT_CHORDS[segment_index]
+		)
+		panel.material_override = _make_material(segment_index)
+		joint.add_child(panel)
+
+		joints.append(joint)
+		parent = joint
+	return joints
 
 
-func _make_triangle_mesh(side: float) -> ArrayMesh:
+func _make_triangle_mesh(side: float, length: float, chord: float) -> ArrayMesh:
 	var mesh := ArrayMesh.new()
 	var vertices := PackedVector3Array([
-		Vector3(side * WING_ROOT_WIDTH, 0.0, -0.1),
-		Vector3(side * WING_SPAN, 0.0, WING_CHORD * 0.55),
-		Vector3(side * WING_ROOT_WIDTH, 0.0, WING_CHORD)
+		Vector3(0.0, 0.0, -chord * 0.12),
+		Vector3(side * length, 0.0, chord * 0.08),
+		Vector3(0.0, 0.0, chord * 0.88),
 	])
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
@@ -77,9 +105,14 @@ func _make_triangle_mesh(side: float) -> ArrayMesh:
 	return mesh
 
 
-func _make_material() -> StandardMaterial3D:
+func _make_material(segment_index: int) -> StandardMaterial3D:
 	var material := StandardMaterial3D.new()
-	material.albedo_color = Color(0.35, 0.75, 1.0, 0.85)
+	material.albedo_color = Color(
+			0.35 + segment_index * 0.04,
+			0.75 - segment_index * 0.04,
+			1.0,
+			0.85
+	)
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED

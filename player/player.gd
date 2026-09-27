@@ -9,6 +9,7 @@ const BODY_DIRECTION_RESPONSE := 2.0
 const WING_DIRECTION_RESPONSE := 3.0
 const MIN_WING_DIRECTION_FORCE := 10.0
 const VISUAL_SHOULDER_OFFSET := 0.65
+const VISUAL_WING_BACK_OFFSET := 0.3
 
 var ground_input_controller := GroundInputController.new()
 var flight_input_controllers: Array[FlightInputController] = [
@@ -24,7 +25,6 @@ var flight_debug: FlightDebug
 var time_since_flap := 10.0
 var stamina_energy_kilojoules := 0.0
 var reported_energy_used_joules := 0.0
-var flap_tween: Tween
 var active_wind_areas: Array[WindArea3D] = []
 var debug_target_wing_normal := Vector3.UP
 
@@ -34,6 +34,7 @@ var debug_target_wing_normal := Vector3.UP
 @onready var debug_container: VBoxContainer = $CanvasLayer/DebugContainer
 @onready var visual_root: Node3D = $VisualRoot
 @onready var wings: Wings = $Wings
+@onready var wing_animation: WingAnimation = $Wings/WingAnimation
 @onready var wing_force_arrow: DebugForceArrow = $WingForceArrow
 
 
@@ -210,7 +211,11 @@ func update_flap_plan(intent: FlightIntent) -> void:
 
 	time_since_flap = 0.0
 	flyer_state.active_flap_direction = flyer_state.current_flap_direction
-	flap_visual()
+	wing_animation.play_flap(
+			WingAnimation.BeatType.EXTRA_UP if intent.wants_upward_flap else WingAnimation.BeatType.FORWARD,
+			flyer_state.airspeed,
+			flyer_profile.flap_cycle_duration
+	)
 
 
 func inside_power_stroke() -> bool:
@@ -286,7 +291,7 @@ func update_visual_orientation(_delta: float) -> void:
 		visual_root.basis = _basis_with_up_and_forward(Vector3.UP, flyer_state.body_direction)
 	var shoulder_position := visual_root.global_position + (
 			visual_root.global_basis.y * VISUAL_SHOULDER_OFFSET
-	)
+	) + visual_root.global_basis.z * VISUAL_WING_BACK_OFFSET
 	wings.update_aerodynamic_pose(
 			velocity,
 		flyer_state.wing_normal,
@@ -321,15 +326,6 @@ func _basis_with_up_and_forward(up_direction: Vector3, forward_direction: Vector
 	var right := forward.cross(up).normalized()
 	var back := right.cross(up).normalized()
 	return Basis(right, up, back)
-
-
-func flap_visual() -> void:
-	if flap_tween:
-		flap_tween.kill()
-	visual_root.scale = Vector3.ONE
-	flap_tween = create_tween()
-	flap_tween.tween_property(visual_root, "scale", Vector3(1.25, 0.85, 1.25), 0.08)
-	flap_tween.tween_property(visual_root, "scale", Vector3.ONE, 0.18)
 
 
 func update_debug_readouts() -> void:

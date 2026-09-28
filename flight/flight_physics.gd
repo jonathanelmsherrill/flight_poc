@@ -165,6 +165,7 @@ func integrate(
 		updated_velocity,
 		airspeed,
 		flyer_state.active_flap_direction,
+		flyer_state.active_power_stroke_duration,
 		flyer_profile,
 		delta
 	)
@@ -291,16 +292,19 @@ func _apply_flap_force(
 		velocity: Vector3,
 		airspeed: float,
 		flap_direction: Vector3,
+		power_stroke_duration: float,
 		flyer_profile: FlyerProfile,
 		delta: float
 ) -> Dictionary:
 	if flap_direction.length_squared() < 0.0001:
 		return {"velocity": velocity, "energy_used_joules": 0.0}
-	# A normal full wingbeat spends the sustainable energy budget for one cycle.
-	# This concentrates that energy in the power stroke without a peak-power stat.
-	var stroke_power_limit := flyer_profile.sustainable_flap_power / maxf(
-			flyer_profile.power_stroke_fraction,
-			0.01
+	# A full wingbeat spends the sustainable energy budget for one nominal
+	# cycle. Short strokes concentrate that energy into a higher instantaneous
+	# power limit; long low-airflow strokes trade peak power for sustained force.
+	var stroke_power_limit := (
+			flyer_profile.sustainable_flap_power
+			* flyer_profile.flap_cycle_duration
+			/ maxf(power_stroke_duration, 0.01)
 	)
 	var power_limited_force := stroke_power_limit / maxf(airspeed, 0.01)
 	var flap_force := minf(flyer_profile.max_flap_force, power_limited_force)

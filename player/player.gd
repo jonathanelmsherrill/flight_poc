@@ -27,6 +27,7 @@ var stamina_energy_kilojoules := 0.0
 var reported_energy_used_joules := 0.0
 var active_wind_areas: Array[WindArea3D] = []
 var debug_target_wing_normal := Vector3.UP
+var wing_animation: WingAnimation
 
 @onready var camera_pitch: Node3D = $CameraPivot/CameraPitch
 @onready var player_camera: PlayerCamera = $CameraPivot/CameraPitch/FreelookPivot/FreelookPitch/SpringArm3D/Camera3D
@@ -34,7 +35,6 @@ var debug_target_wing_normal := Vector3.UP
 @onready var debug_container: VBoxContainer = $CanvasLayer/DebugContainer
 @onready var visual_root: Node3D = $VisualRoot
 @onready var wings: Wings = $Wings
-@onready var wing_animation: WingAnimation = $Wings/WingAnimation
 @onready var wing_force_arrow: DebugForceArrow = $WingForceArrow
 
 
@@ -48,6 +48,11 @@ func _ready() -> void:
 	flyer_state.body_direction = -global_basis.z
 	flyer_state.body_up_direction = global_basis.y
 	flyer_state.wing_normal = global_basis.y
+	flyer_state.active_power_stroke_duration = flyer_profile.get_power_stroke_duration(0.0)
+	flyer_state.active_flap_recovery_duration = flyer_profile.get_flap_recovery_duration(0.0)
+	wing_animation = SimpleWingAnimation.new()
+	wings.set_animation(wing_animation)
+	wing_animation.configure(visual_root, flyer_profile.fast_power_stroke_airspeed)
 	activate_flight_input_mode(0)
 	flight_physics.calculate_profile_performance(flyer_profile)
 	stamina_energy_kilojoules = flyer_profile.stamina_capacity_kilojoules
@@ -128,7 +133,6 @@ func apply_ground_movement(
 
 	if jump_requested:
 		velocity.y = JUMP_VELOCITY
-		time_since_flap = flyer_profile.flap_cycle_duration / 2.0
 
 	physics_result.lift_force = Vector3.ZERO
 	physics_result.induced_drag_force = 0.0
@@ -187,20 +191,15 @@ func update_flap_plan(intent: FlightIntent) -> void:
 	if flyer_state.airspeed > flyer_profile.max_airspeed_can_flap:
 		return
 
-	if intent.wants_upward_flap:
-		flyer_state.current_flap_direction = Vector3.UP if intent.maneuver_aggression <= 0.0 else (
-				Vector3.UP + intent.desired_direction
-			).normalized()
-	elif intent.wants_flap:
-		flyer_state.current_flap_direction = intent.desired_direction
-
 	if stamina_energy_kilojoules > 0.0 and inside_power_stroke():
 		flyer_state.active_flap_direction = flyer_state.current_flap_direction
+
+	if not flap_recovery_complete():
+		return
 
 	var regular_flap_due := time_since_flap >= flyer_profile.flap_cycle_duration
 	var extra_flap_requested := (
 			intent.requests_extra_flap
-			and not inside_power_stroke()
 			and not regular_flap_due
 	)
 	if not intent.wants_flap or not (regular_flap_due or extra_flap_requested):
@@ -209,17 +208,49 @@ func update_flap_plan(intent: FlightIntent) -> void:
 	if stamina_energy_kilojoules <= 0.0:
 		return
 
+	var thrust_direction := (
+			Vector3.UP
+			if intent.wants_upward_flap
+			else intent.desired_direction
+	)
+	_begin_power_stroke(thrust_direction)
+
+
+func _begin_power_stroke(thrust_direction: Vector3) -> void:
+	if thrust_direction.length_squared() < 0.0001:
+		return
+	flyer_state.current_flap_direction = thrust_direction.normalized()
+	flyer_state.active_power_stroke_duration = flyer_profile.get_power_stroke_duration(
+			flyer_state.airspeed
+	)
+	flyer_state.active_flap_recovery_duration = flyer_profile.get_flap_recovery_duration(
+			flyer_state.airspeed
+	)
 	time_since_flap = 0.0
 	flyer_state.active_flap_direction = flyer_state.current_flap_direction
-	wing_animation.play_flap(
-			WingAnimation.BeatType.EXTRA_UP if intent.wants_upward_flap else WingAnimation.BeatType.FORWARD,
+	wing_animation.play_beat(WingBeatAnimationRequest.new(
 			flyer_state.airspeed,
-			flyer_profile.flap_cycle_duration
-	)
+			flyer_state.current_flap_direction,
+			flyer_state.active_power_stroke_duration,
+			flyer_state.active_flap_recovery_duration,
+			maxf(
+					flyer_profile.flap_cycle_duration
+					- flyer_state.active_power_stroke_duration
+					- flyer_state.active_flap_recovery_duration,
+					0.0
+			)
+	))
 
 
 func inside_power_stroke() -> bool:
-	return time_since_flap < flyer_profile.flap_cycle_duration * flyer_profile.power_stroke_fraction
+	return time_since_flap < flyer_state.active_power_stroke_duration
+
+
+func flap_recovery_complete() -> bool:
+	return time_since_flap >= (
+			flyer_state.active_power_stroke_duration
+			+ flyer_state.active_flap_recovery_duration
+	)
 
 
 func update_flyer_state() -> void:

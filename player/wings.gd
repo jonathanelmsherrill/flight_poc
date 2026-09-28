@@ -1,26 +1,28 @@
 class_name Wings
 extends Node3D
 
-## Two articulated visual wings. Their resting plane is defined by the
-## controller's surface normal. Flyer velocity resolves the rotation around
-## that normal without allowing wind to alter the displayed command.
-const WING_ROOT_OFFSET := 0.24
-const SEGMENT_LENGTHS := [0.76, 0.74, 0.66]
-const SEGMENT_CHORDS := [1.05, 0.82, 0.58]
-const JOINT_NAMES := [&"ShoulderJoint", &"ElbowJoint", &"WristJoint"]
+## Shared attachment and aerodynamic orientation for interchangeable visual
+## wing implementations.
 const MIN_DIRECTION_LENGTH_SQUARED := 0.0001
 
 var span_direction := Vector3.RIGHT
-
-@onready var wing_animation: WingAnimation = $WingAnimation
-
-
-func _ready() -> void:
-	var left_joints := _make_wing("LeftWing", -1.0)
-	var right_joints := _make_wing("RightWing", 1.0)
-	wing_animation.configure(left_joints, right_joints)
+var wing_animation: WingAnimation
 
 
+## Replaces the active visual rig. Wings owns its lifetime and makes it a child
+## so every implementation inherits this node's attachment transform.
+func set_animation(new_animation: WingAnimation) -> void:
+	if is_instance_valid(wing_animation):
+		remove_child(wing_animation)
+		wing_animation.queue_free()
+	wing_animation = new_animation
+	wing_animation.name = "WingAnimation"
+	add_child(wing_animation)
+
+
+## Places and orients the visual wing rig from the physical wing surface.
+## This runs whether the flyer is gliding or flapping; animations only change
+## their own local joints beneath this transform.
 func update_aerodynamic_pose(
 		flight_velocity: Vector3,
 		wing_surface_normal: Vector3,
@@ -52,68 +54,10 @@ func update_aerodynamic_pose(
 	global_basis = Basis(span_direction, surface_normal, chord_back)
 
 
+## Chooses a stable direction across the wing when airflow cannot determine
+## one, such as when the wing is presented directly into the airflow.
 func _fallback_span_direction(surface_normal: Vector3) -> Vector3:
 	var reference := Vector3.RIGHT
 	if absf(reference.dot(surface_normal)) > 0.9:
 		reference = Vector3.FORWARD
 	return (reference - surface_normal * reference.dot(surface_normal)).normalized()
-
-
-func _make_wing(wing_name: String, side: float) -> Array[Node3D]:
-	var wing_root := Node3D.new()
-	wing_root.name = wing_name
-	add_child(wing_root)
-
-	var joints: Array[Node3D] = []
-	var parent := wing_root
-	for segment_index in SEGMENT_LENGTHS.size():
-		var joint := Node3D.new()
-		joint.name = JOINT_NAMES[segment_index]
-		joint.position = Vector3(
-				side * (WING_ROOT_OFFSET if segment_index == 0 else SEGMENT_LENGTHS[segment_index - 1]),
-				0.0,
-				0.0 if segment_index == 0 else SEGMENT_CHORDS[segment_index - 1] * 0.08
-		)
-		parent.add_child(joint)
-
-		var panel := MeshInstance3D.new()
-		panel.name = "Panel"
-		panel.mesh = _make_triangle_mesh(
-				side,
-				SEGMENT_LENGTHS[segment_index],
-				SEGMENT_CHORDS[segment_index]
-		)
-		panel.material_override = _make_material(segment_index)
-		joint.add_child(panel)
-
-		joints.append(joint)
-		parent = joint
-	return joints
-
-
-func _make_triangle_mesh(side: float, length: float, chord: float) -> ArrayMesh:
-	var mesh := ArrayMesh.new()
-	var vertices := PackedVector3Array([
-		Vector3(0.0, 0.0, -chord * 0.12),
-		Vector3(side * length, 0.0, chord * 0.08),
-		Vector3(0.0, 0.0, chord * 0.88),
-	])
-	var arrays := []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = vertices
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	return mesh
-
-
-func _make_material(segment_index: int) -> StandardMaterial3D:
-	var material := StandardMaterial3D.new()
-	material.albedo_color = Color(
-			0.35 + segment_index * 0.04,
-			0.75 - segment_index * 0.04,
-			1.0,
-			0.85
-	)
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	material.cull_mode = BaseMaterial3D.CULL_DISABLED
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	return material

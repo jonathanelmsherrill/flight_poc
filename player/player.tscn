@@ -3,9 +3,8 @@
 [ext_resource type="Script" uid="uid://ev6ktpi6t7o8" path="res://player/player.gd" id="1_4flbx"]
 [ext_resource type="Script" uid="uid://5ijlxk7nqa0u" path="res://player/player_camera.gd" id="2_i3pqv"]
 [ext_resource type="Script" uid="uid://p2vslya6h6ul" path="res://ui/flight_hud.gd" id="3_i3pqv"]
-[ext_resource type="Script" uid="uid://xg5ujt6gmsu8" path="res://player/wings.gd" id="4_wings"]
+[ext_resource type="Script" uid="uid://b7mcfwmpmtwpf" path="res://player/wings.gd" id="4_wings"]
 [ext_resource type="Script" uid="uid://ceslej5nqewy8" path="res://debug/debug_force_arrow.gd" id="5_force_arrow"]
-[ext_resource type="Script" uid="uid://buhyobwk8p5w" path="res://player/wing_animation.gd" id="5_wing_animation"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_onrkg"]
 albedo_color = Color(0.9254902, 0.5882353, 0.9882353, 1)
@@ -30,9 +29,6 @@ mesh = SubResource("CapsuleMesh_sh265")
 
 [node name="Wings" type="Node3D" parent="." unique_id=959052645]
 script = ExtResource("4_wings")
-
-[node name="WingAnimation" type="Node" parent="Wings"]
-script = ExtResource("5_wing_animation")
 
 [node name="WingForceArrow" type="Node3D" parent="." unique_id=1121843157]
 script = ExtResource("5_force_arrow")

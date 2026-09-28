@@ -80,8 +80,8 @@ func get_gravity_fighting_speed(aoa: float) -> float:
 # Dominates at low airspeed, where available power is not yet limiting.
 # Measured in Newtons. 
 # At low speed, impulse per flap = flap_force * power-stroke duration.
-# Cycle-averaged acceleration is flap_force * power_stroke_fraction / mass.
-# So assuming 45 kg mass 500 flap force = 2.22 m/s^2.    
+# Cycle-averaged acceleration is flap_force * power_stroke_duration
+# / flap_cycle_duration / mass.
 @export var max_flap_force := 350.0
 
 # Active flapping is disabled above this airspeed, in metres per second.
@@ -102,20 +102,54 @@ func get_gravity_fighting_speed(aoa: float) -> float:
 # a top human athelete might produce over a few short seconds. 
 # Fun fact: If left to black body emissions, our heroine would have a body temperature of around 500F.
 # Those giant wings must also be fantastic heat exchangers. 
-# Handy formula: max_speed= cube_root(power_stroke_percentage * flap_power / air_drag_coefficient / mass)	
+# Handy formula: max_speed= cube_root(power-stroke fraction * flap_power / air_drag_coefficient / mass)
 # So 2500 max power at 45 kg and 0.008 drag ~= 11 m/s top speed, about 24 mph.
 # At 4,500 W, the current values create an intentionally fantastical flyer.
 # Average mechanical power that can be maintained indefinitely, in Watts.
 # A power stroke concentrates a cycle's energy into its active window. At
-# speed, force is limited by sustainable power / stroke fraction / airspeed.
+# speed, force is limited by sustainable power * cycle duration
+# / power-stroke duration / airspeed.
 @export var sustainable_flap_power := 900.0
 
 # How long is one beat cycle. It controls cadence and the sustainable energy
 # budget assigned to each normal wingbeat, in seconds.
 @export var flap_cycle_duration := 1
-# Portion of each cycle that produces force. A shorter stroke has a higher
-# instantaneous limit because the same cycle energy is concentrated in it.
-@export_range(0.01, 1.0) var power_stroke_fraction := 0.2
+
+# At low airspeed, long strokes let the wings grab a large mass of air. Fast
+# airflow requires a shorter stroke and shallower visual angle of attack.
+@export_range(0.01, 100.0, 0.1) var fast_power_stroke_airspeed := 22.0
+@export_range(0.01, 2.0, 0.01) var low_airspeed_power_stroke_duration := 0.25
+@export_range(0.01, 2.0, 0.01) var high_airspeed_power_stroke_duration := 0.15
+
+# Force is inactive while the animator folds and returns the wings to their
+# ready position. No new power stroke can begin during this interval.
+@export_range(0.01, 2.0, 0.01) var low_airspeed_flap_recovery_duration := 0.15
+@export_range(0.01, 2.0, 0.01) var high_airspeed_flap_recovery_duration := 0.09
+
+
+func get_power_stroke_duration(airspeed: float) -> float:
+	return lerpf(
+			low_airspeed_power_stroke_duration,
+			high_airspeed_power_stroke_duration,
+			_get_flap_airflow_ratio(airspeed)
+	)
+
+
+func get_flap_recovery_duration(airspeed: float) -> float:
+	return lerpf(
+			low_airspeed_flap_recovery_duration,
+			high_airspeed_flap_recovery_duration,
+			_get_flap_airflow_ratio(airspeed)
+	)
+
+
+func _get_flap_airflow_ratio(airspeed: float) -> float:
+	var airflow_ratio := clampf(
+			maxf(airspeed, 0.0) / maxf(fast_power_stroke_airspeed, 0.01),
+			0.0,
+			1.0
+	)
+	return smoothstep(0.0, 1.0, airflow_ratio)
 
 @export_group("Stamina")
 

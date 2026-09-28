@@ -17,6 +17,10 @@ var body_up_direction := Vector3.UP
 var wing_normal := Vector3.UP
 var current_flap_direction := Vector3.ZERO
 var active_flap_direction := Vector3.ZERO
+## Duration locked in when the current power stroke begins.
+var active_power_stroke_duration := 0.0
+## Force-free folded return duration locked in with the current stroke.
+var active_flap_recovery_duration := 0.0
 
 ## Diagnostics derived from, or requested for, the physical wing state.
 var info_effective_aoa := 0.0

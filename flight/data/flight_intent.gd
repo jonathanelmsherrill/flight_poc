@@ -13,7 +13,15 @@ var force_wing_direction := false
 var wants_airbrake := false
 var wants_flap := false
 var wants_upward_flap := false
+## A direction key is also asking for thrust, so an upward flap splits between
+## up and flap_direction.
+var wants_directed_flap := false
 var requests_extra_flap := false
+## Flap as hard and as often as possible: each new power stroke begins as soon
+## as the previous recovery ends.
+var wants_exertion := false
+## Thrust direction for a flap that isn't an upward (jump) flap.
+var flap_direction := Vector3.FORWARD
 
 
 func _init(

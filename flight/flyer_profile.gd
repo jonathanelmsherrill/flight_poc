@@ -39,32 +39,6 @@ extends Resource
 # Lower values mean better streamlining and less speed loss in normal flight.
 @export var parasite_drag_coefficient := 0.004 # 0.008
 
-## Runtime performance data calculated by FlightPhysics when the player starts.
-var gravity_fighting_speed_by_aoa: Dictionary[float, float] = {}
-var optimal_lift_to_drag_aoa := 0.0
-
-
-func get_gravity_fighting_speed(aoa: float) -> float:
-	if gravity_fighting_speed_by_aoa.is_empty():
-		return 0.0
-	var lower_aoa := gravity_fighting_speed_by_aoa.keys().min() as float
-	var upper_aoa := gravity_fighting_speed_by_aoa.keys().max() as float
-	if aoa < lower_aoa:
-		return 0.0
-	var clamped_aoa := clampf(aoa, lower_aoa, upper_aoa)
-	var lower_speed := gravity_fighting_speed_by_aoa[lower_aoa]
-	var upper_speed := gravity_fighting_speed_by_aoa[upper_aoa]
-	for sample_aoa in gravity_fighting_speed_by_aoa:
-		if sample_aoa <= clamped_aoa and sample_aoa >= lower_aoa:
-			lower_aoa = sample_aoa
-			lower_speed = gravity_fighting_speed_by_aoa[sample_aoa]
-		if sample_aoa >= clamped_aoa and sample_aoa <= upper_aoa:
-			upper_aoa = sample_aoa
-			upper_speed = gravity_fighting_speed_by_aoa[sample_aoa]
-	if is_equal_approx(lower_aoa, upper_aoa):
-		return lower_speed
-	return lerpf(lower_speed, upper_speed, inverse_lerp(lower_aoa, upper_aoa, clamped_aoa))
-
 # How quickly the flyer can reorient their body/wings toward the desired maneuver.
 # Higher values mean more responsive steering and faster changes in wing force direction.
 # E.g, "I fell off a cliff, how long does it take to reorient to control my flight again?"
@@ -111,45 +85,53 @@ func get_gravity_fighting_speed(aoa: float) -> float:
 # / power-stroke duration / airspeed.
 @export var sustainable_flap_power := 900.0
 
+# Peak mechanical power an exertion (Shift) power stroke may draw, in Watts.
+# Normal strokes are limited to the sustainable budget concentrated into the
+# stroke; exertion strokes may use whichever limit is higher, paying the excess
+# from stamina. Exertion also skips the cadence wait, so each new stroke begins
+# as soon as the previous recovery ends.
+@export var max_flap_power := 7500.0
+
+# Space held with a direction (W/A/D, or S while exerting) splits the stroke
+# between straight up and that direction's horizontal heading. This is the
+# stroke's tilt from vertical, in degrees: 0 is pure up, 90 pure horizontal.
+@export_range(0.0, 90.0, 1.0) var directed_upward_flap_angle := 45.0
+
 # How long is one beat cycle. It controls cadence and the sustainable energy
 # budget assigned to each normal wingbeat, in seconds.
 @export var flap_cycle_duration := 1
 
 # At low airspeed, long strokes let the wings grab a large mass of air. Fast
 # airflow requires a shorter stroke and shallower visual angle of attack.
-@export_range(0.01, 100.0, 0.1) var fast_power_stroke_airspeed := 22.0
+@export_range(0.01, 100.0, 0.1) var fast_power_stroke_airspeed := 26.0
 @export_range(0.01, 2.0, 0.01) var low_airspeed_power_stroke_duration := 0.25
 @export_range(0.01, 2.0, 0.01) var high_airspeed_power_stroke_duration := 0.15
 
 # Force is inactive while the animator folds and returns the wings to their
 # ready position. No new power stroke can begin during this interval.
-@export_range(0.01, 2.0, 0.01) var low_airspeed_flap_recovery_duration := 0.11
-@export_range(0.01, 2.0, 0.01) var high_airspeed_flap_recovery_duration := 0.05
+@export_range(0.01, 2.0, 0.01) var low_airspeed_flap_recovery_duration := 0.12
+@export_range(0.01, 2.0, 0.01) var high_airspeed_flap_recovery_duration := 0.09
 
 
-func get_power_stroke_duration(airspeed: float) -> float:
-	return lerpf(
-			low_airspeed_power_stroke_duration,
-			high_airspeed_power_stroke_duration,
-			_get_flap_airflow_ratio(airspeed)
-	)
+@export_group("Ground Movement")
 
+# Normal walking/running speed, in metres per second.
+@export var walk_speed := 4.0
 
-func get_flap_recovery_duration(airspeed: float) -> float:
-	return lerpf(
-			low_airspeed_flap_recovery_duration,
-			high_airspeed_flap_recovery_duration,
-			_get_flap_airflow_ratio(airspeed)
-	)
+# Seconds to reach walking speed from a standstill, or to stop from it. Bigger
+# velocity changes take proportionally longer: a full reversal takes twice this,
+# and slowing from a sprint takes sprint speed / walk speed times this.
+@export_range(0.01, 2.0, 0.01) var ground_direction_change_time := 0.1
 
+# Sprinting (Shift + forward) begins at this speed and builds toward
+# sprint_max_speed over sprint_build_time, raising the wings as it goes.
+@export var sprint_start_speed := 4.0
+@export var sprint_max_speed := 12.0
+@export_range(0.01, 10.0, 0.01) var sprint_build_time := 2.5
 
-func _get_flap_airflow_ratio(airspeed: float) -> float:
-	var airflow_ratio := clampf(
-			maxf(airspeed, 0.0) / maxf(fast_power_stroke_airspeed, 0.01),
-			0.0,
-			1.0
-	)
-	return smoothstep(0.0, 1.0, airflow_ratio)
+# Power spent while sprinting, in Watts. Stamina only drains by the amount this
+# exceeds sustainable_flap_power, so the default costs roughly 300 W.
+@export var sprint_power := 1200.0
 
 @export_group("Stamina")
 

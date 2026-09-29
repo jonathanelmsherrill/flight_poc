@@ -3,7 +3,6 @@ extends CharacterBody3D
 
 @export var flyer_profile: FlyerProfile
 
-const GROUND_MOVE_SPEED := 8.0
 const JUMP_VELOCITY := 4.5
 const BODY_DIRECTION_RESPONSE := 2.0
 const WING_DIRECTION_RESPONSE := 3.0
@@ -23,6 +22,10 @@ var flyer_state := FlyerState.new()
 var physics_result := FlightPhysicsResult.new()
 var flight_debug: FlightDebug
 var time_since_flap := 10.0
+## Current sprint pace on the ground; 0 when not sprinting.
+var ground_sprint_speed := 0.0
+## Set when stamina runs out mid-sprint; cleared when sprint is released.
+var sprint_needs_release := false
 var stamina_energy_kilojoules := 0.0
 var reported_energy_used_joules := 0.0
 var active_wind_areas: Array[WindArea3D] = []
@@ -48,13 +51,12 @@ func _ready() -> void:
 	flyer_state.body_direction = -global_basis.z
 	flyer_state.body_up_direction = global_basis.y
 	flyer_state.wing_normal = global_basis.y
-	flyer_state.active_power_stroke_duration = flyer_profile.get_power_stroke_duration(0.0)
-	flyer_state.active_flap_recovery_duration = flyer_profile.get_flap_recovery_duration(0.0)
+	flyer_state.active_power_stroke_duration = FlightPhysics.get_power_stroke_duration(flyer_profile, 0.0)
+	flyer_state.active_flap_recovery_duration = FlightPhysics.get_flap_recovery_duration(flyer_profile, 0.0)
 	wing_animation = AiOpus3ptWingAnimation1.new()
 	wings.set_animation(wing_animation)
 	wing_animation.configure(visual_root, flyer_profile.fast_power_stroke_airspeed)
 	activate_flight_input_mode(0)
-	flight_physics.calculate_profile_performance(flyer_profile)
 	stamina_energy_kilojoules = flyer_profile.stamina_capacity_kilojoules
 	stamina_bar.max_value = flyer_profile.stamina_capacity_kilojoules
 	stamina_bar.value = stamina_energy_kilojoules
@@ -75,9 +77,12 @@ func _physics_process(delta: float) -> void:
 		apply_ground_movement(
 				ground_input_controller.get_movement_input(),
 				ground_input_controller.is_jump_requested(),
+				ground_input_controller.is_sprint_requested(),
 				delta
 		)
 	else:
+		# Landing picks any sprint back up from the landing pace.
+		ground_sprint_speed = 0.0
 		# Flight input controller divines player intent
 		# The flight controller then tries to translate that into a physical state
 		# And then the physics engine determines what happens.
@@ -112,6 +117,7 @@ func activate_flight_input_mode(mode_index: int) -> void:
 func apply_ground_movement(
 		input_vector: Vector2,
 		jump_requested: bool,
+		sprint_requested: bool,
 		delta: float
 ) -> void:
 	flyer_state.info_requested_aerodynamic_force = Vector3.ZERO
@@ -121,15 +127,24 @@ func apply_ground_movement(
 	var camera_right := camera_pitch.global_basis.x
 	camera_forward.y = 0.0
 	camera_right.y = 0.0
-	if input_vector.length_squared() >= 0.0001 and camera_forward.length_squared() >= 0.0001:
+	# Forward always follows the mouse, whether or not we're moving.
+	if camera_forward.length_squared() >= 0.0001:
 		flyer_state.body_direction = camera_forward.normalized()
 	flyer_state.body_up_direction = Vector3.UP
+	# Level wings, so any sprint spread and the first moment of a takeoff start
+	# from a sensible surface rather than whatever the last landing left.
+	flyer_state.wing_normal = Vector3.UP
 	var ground_direction := (
 			camera_right.normalized() * input_vector.x
 			+ camera_forward.normalized() * -input_vector.y
 		).normalized()
-	velocity.x = ground_direction.x * GROUND_MOVE_SPEED
-	velocity.z = ground_direction.z * GROUND_MOVE_SPEED
+	var ground_speed := update_ground_sprint(input_vector, sprint_requested, delta)
+	var horizontal_velocity := Vector3(velocity.x, 0.0, velocity.z).move_toward(
+			ground_direction * ground_speed,
+			flyer_profile.walk_speed / flyer_profile.ground_direction_change_time * delta
+	)
+	velocity.x = horizontal_velocity.x
+	velocity.z = horizontal_velocity.z
 
 	if jump_requested:
 		velocity.y = JUMP_VELOCITY
@@ -141,6 +156,47 @@ func apply_ground_movement(
 	physics_result.high_aoa_drag_force = 0.0
 	physics_result.high_aoa_drag_vector = Vector3.ZERO
 	physics_result.wing_aerodynamic_force = Vector3.ZERO
+
+
+## Returns the ground speed to move at. Sprinting only builds while moving
+## forward, raising the wings as it goes. Running out of stamina ends it until
+## sprint is pressed again, so an empty reserve can't flicker it on and off.
+func update_ground_sprint(
+		input_vector: Vector2,
+		sprint_requested: bool,
+		delta: float
+) -> float:
+	if not sprint_requested:
+		sprint_needs_release = false
+	var sprinting := sprint_requested and input_vector.y < 0.0 and not sprint_needs_release
+	if sprinting and stamina_energy_kilojoules <= 0.0:
+		sprinting = false
+		sprint_needs_release = true
+	if not sprinting:
+		ground_sprint_speed = 0.0
+		wing_animation.set_ground_spread(0.0)
+		return flyer_profile.walk_speed
+
+	if ground_sprint_speed <= 0.0:
+		ground_sprint_speed = clampf(
+				Vector2(velocity.x, velocity.z).length(),
+				flyer_profile.sprint_start_speed,
+				flyer_profile.sprint_max_speed
+		)
+	var sprint_speed_range := maxf(
+			flyer_profile.sprint_max_speed - flyer_profile.sprint_start_speed,
+			0.01
+	)
+	ground_sprint_speed = move_toward(
+			ground_sprint_speed,
+			flyer_profile.sprint_max_speed,
+			sprint_speed_range / flyer_profile.sprint_build_time * delta
+	)
+	report_energy_used(flyer_profile.sprint_power * delta)
+	wing_animation.set_ground_spread(
+			(ground_sprint_speed - flyer_profile.sprint_start_speed) / sprint_speed_range
+	)
+	return ground_sprint_speed
 
 
 func apply_flight_movement(intent: FlightIntent, delta: float) -> void:
@@ -199,31 +255,52 @@ func update_flap_plan(intent: FlightIntent) -> void:
 
 	var regular_flap_due := time_since_flap >= flyer_profile.flap_cycle_duration
 	var extra_flap_requested := (
-			intent.requests_extra_flap
+			(intent.requests_extra_flap or intent.wants_exertion)
 			and not regular_flap_due
 	)
 	if not intent.wants_flap or not (regular_flap_due or extra_flap_requested):
 		return
 
-	if stamina_energy_kilojoules <= 0.0:
+	var stroke_stamina_cost := FlightPhysics.get_power_stroke_stamina_cost(
+			flyer_profile,
+			flyer_state.airspeed,
+			FlightPhysics.get_power_stroke_duration(flyer_profile, flyer_state.airspeed),
+			intent.wants_exertion
+	)
+	if stamina_energy_kilojoules <= 0.0 or stamina_energy_kilojoules * 1000.0 < stroke_stamina_cost:
 		return
 
-	var thrust_direction := (
-			Vector3.UP
-			if intent.wants_upward_flap
-			else intent.desired_direction
-	)
-	_begin_power_stroke(thrust_direction)
+	var thrust_direction := intent.flap_direction
+	if intent.wants_upward_flap:
+		thrust_direction = (
+				_split_upward_flap_direction(intent.flap_direction)
+				if intent.wants_directed_flap
+				else Vector3.UP
+		)
+	_begin_power_stroke(thrust_direction, intent.wants_exertion)
 
 
-func _begin_power_stroke(thrust_direction: Vector3) -> void:
+## Tilts straight up toward the direction's horizontal heading by the profile's
+## split angle, so the stroke's lean doesn't depend on camera pitch.
+func _split_upward_flap_direction(direction: Vector3) -> Vector3:
+	var heading := Vector3(direction.x, 0.0, direction.z)
+	if heading.length_squared() < 0.0001:
+		return Vector3.UP
+	var tilt := deg_to_rad(flyer_profile.directed_upward_flap_angle)
+	return Vector3.UP * cos(tilt) + heading.normalized() * sin(tilt)
+
+
+func _begin_power_stroke(thrust_direction: Vector3, is_exertion: bool) -> void:
 	if thrust_direction.length_squared() < 0.0001:
 		return
 	flyer_state.current_flap_direction = thrust_direction.normalized()
-	flyer_state.active_power_stroke_duration = flyer_profile.get_power_stroke_duration(
+	flyer_state.active_power_stroke_is_exertion = is_exertion
+	flyer_state.active_power_stroke_duration = FlightPhysics.get_power_stroke_duration(
+			flyer_profile,
 			flyer_state.airspeed
 	)
-	flyer_state.active_flap_recovery_duration = flyer_profile.get_flap_recovery_duration(
+	flyer_state.active_flap_recovery_duration = FlightPhysics.get_flap_recovery_duration(
+			flyer_profile,
 			flyer_state.airspeed
 	)
 	time_since_flap = 0.0

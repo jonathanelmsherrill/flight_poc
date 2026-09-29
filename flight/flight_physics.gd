@@ -14,49 +14,6 @@ const PLATE_LIFT_COEFFICIENT := 1.6
 const PLATE_DRAG_COEFFICIENT := 1.5
 const INDUCED_DRAG_COEFFICIENT := 0.05 #0.14
 const MIN_AIRSPEED := 0.2
-const PERFORMANCE_AOA_STEP := 0.25
-
-
-func calculate_profile_performance(flyer_profile: FlyerProfile) -> void:
-	flyer_profile.gravity_fighting_speed_by_aoa.clear()
-	var aoa := PERFORMANCE_AOA_STEP
-	while aoa < FULL_SEPARATION_AOA:
-		flyer_profile.gravity_fighting_speed_by_aoa[aoa] = _get_gravity_fighting_speed(aoa, flyer_profile)
-		aoa += PERFORMANCE_AOA_STEP
-	flyer_profile.gravity_fighting_speed_by_aoa[FULL_SEPARATION_AOA] = _get_gravity_fighting_speed(
-			FULL_SEPARATION_AOA,
-			flyer_profile
-	)
-
-	var best_lift_to_drag := 0.0
-	flyer_profile.optimal_lift_to_drag_aoa = 0.0
-	for sample_index in range(1, 101):
-		var sample_aoa := FULL_SEPARATION_AOA * float(sample_index) / 100.0
-		var minimum_speed := _get_gravity_fighting_speed(sample_aoa, flyer_profile)
-		var lift_force := flyer_profile.base_mass * GRAVITY
-		var induced_drag := get_induced_drag_force(
-				lift_force,
-				minimum_speed,
-				flyer_profile.aerodynamic_authority
-		)
-		var surface_speed := minimum_speed * cos(sample_aoa)
-		var parasite_drag := (
-				flyer_profile.parasite_drag_coefficient
-				* surface_speed * surface_speed
-		)
-		var lift_to_drag := lift_force / maxf(induced_drag + parasite_drag, 0.0001)
-		if lift_to_drag > best_lift_to_drag:
-			best_lift_to_drag = lift_to_drag
-			flyer_profile.optimal_lift_to_drag_aoa = sample_aoa
-
-
-func _get_gravity_fighting_speed(aoa: float, flyer_profile: FlyerProfile) -> float:
-	var lift_coefficient := get_lift_coefficient(aoa)
-	if lift_coefficient <= 0.0001 or flyer_profile.aerodynamic_authority <= 0.0001:
-		return INF
-	return sqrt(flyer_profile.base_mass * GRAVITY / (
-			flyer_profile.aerodynamic_authority * lift_coefficient
-	))
 
 
 func integrate(
@@ -166,6 +123,7 @@ func integrate(
 		airspeed,
 		flyer_state.active_flap_direction,
 		flyer_state.active_power_stroke_duration,
+		flyer_state.active_power_stroke_is_exertion,
 		flyer_profile,
 		delta
 	)
@@ -293,6 +251,7 @@ func _apply_flap_force(
 		airspeed: float,
 		flap_direction: Vector3,
 		power_stroke_duration: float,
+		is_exertion: bool,
 		flyer_profile: FlyerProfile,
 		delta: float
 ) -> Dictionary:
@@ -301,14 +260,90 @@ func _apply_flap_force(
 	# A full wingbeat spends the sustainable energy budget for one nominal
 	# cycle. Short strokes concentrate that energy into a higher instantaneous
 	# power limit; long low-airflow strokes trade peak power for sustained force.
+	# Exertion strokes may exceed that budget up to the flyer's peak power.
+	var flap_force := get_flap_force(
+			flyer_profile,
+			airspeed,
+			power_stroke_duration,
+			is_exertion
+	)
+	return {
+		"velocity": velocity + flap_direction.normalized() * flap_force / flyer_profile.base_mass * delta,
+		"energy_used_joules": flap_force * airspeed * delta
+	}
+
+
+## Wingbeats
+
+
+static func get_power_stroke_duration(flyer_profile: FlyerProfile, airspeed: float) -> float:
+	return lerpf(
+			flyer_profile.low_airspeed_power_stroke_duration,
+			flyer_profile.high_airspeed_power_stroke_duration,
+			_get_flap_airflow_ratio(flyer_profile, airspeed)
+	)
+
+
+static func get_flap_recovery_duration(flyer_profile: FlyerProfile, airspeed: float) -> float:
+	return lerpf(
+			flyer_profile.low_airspeed_flap_recovery_duration,
+			flyer_profile.high_airspeed_flap_recovery_duration,
+			_get_flap_airflow_ratio(flyer_profile, airspeed)
+	)
+
+
+## Instantaneous power available to a power stroke of the given duration.
+static func get_flap_power_limit(
+		flyer_profile: FlyerProfile,
+		power_stroke_duration: float,
+		is_exertion: bool
+) -> float:
 	var stroke_power_limit := (
 			flyer_profile.sustainable_flap_power
 			* flyer_profile.flap_cycle_duration
 			/ maxf(power_stroke_duration, 0.01)
 	)
-	var power_limited_force := stroke_power_limit / maxf(airspeed, 0.01)
-	var flap_force := minf(flyer_profile.max_flap_force, power_limited_force)
-	return {
-		"velocity": velocity + flap_direction.normalized() * flap_force / flyer_profile.base_mass * delta,
-		"energy_used_joules": flap_force * airspeed * delta
-	}
+	if is_exertion:
+		return maxf(stroke_power_limit, flyer_profile.max_flap_power)
+	return stroke_power_limit
+
+
+## Force of a power stroke: capped by max_flap_force at low airspeed and by the
+## stroke's power limit at high airspeed.
+static func get_flap_force(
+		flyer_profile: FlyerProfile,
+		airspeed: float,
+		power_stroke_duration: float,
+		is_exertion: bool
+) -> float:
+	var power_limited_force := (
+			get_flap_power_limit(flyer_profile, power_stroke_duration, is_exertion)
+			/ maxf(airspeed, 0.01)
+	)
+	return minf(flyer_profile.max_flap_force, power_limited_force)
+
+
+## Stamina a full power stroke would draw beyond what sustainable power
+## replenishes during it, in joules. Assumes airspeed holds through the stroke.
+static func get_power_stroke_stamina_cost(
+		flyer_profile: FlyerProfile,
+		airspeed: float,
+		power_stroke_duration: float,
+		is_exertion: bool
+) -> float:
+	var stroke_power := airspeed * get_flap_force(
+			flyer_profile,
+			airspeed,
+			power_stroke_duration,
+			is_exertion
+	)
+	return maxf(stroke_power - flyer_profile.sustainable_flap_power, 0.0) * power_stroke_duration
+
+
+static func _get_flap_airflow_ratio(flyer_profile: FlyerProfile, airspeed: float) -> float:
+	var airflow_ratio := clampf(
+			maxf(airspeed, 0.0) / maxf(flyer_profile.fast_power_stroke_airspeed, 0.01),
+			0.0,
+			1.0
+	)
+	return smoothstep(0.0, 1.0, airflow_ratio)

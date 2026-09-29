@@ -120,6 +120,8 @@ var _folded_pose := WingPose.from_degrees(0.0, FOLDED)
 var _current_pose := _glide_pose
 var _flight_velocity := Vector3.ZERO
 var _is_airborne := true
+## How far the wings open while grounded: 0 folded, 1 spread for a takeoff run.
+var _ground_spread := 0.0
 ## Overlay on top of the beat/glide pose: 1 is folded flat against the back.
 var _fold_weight := 0.0
 var _smoothed_airspeed := 0.0
@@ -153,7 +155,7 @@ func _process(delta: float) -> void:
 			_track_poses.clear()
 
 	# Fold slowly after landing; snap open quickly for a takeoff.
-	var fold_target := 0.0 if _is_airborne else 1.0
+	var fold_target := 0.0 if _is_airborne else 1.0 - _ground_spread
 	var fold_response := FOLD_RESPONSE if fold_target > _fold_weight else UNFOLD_RESPONSE
 	_fold_weight = lerpf(_fold_weight, fold_target, 1.0 - exp(-fold_response * delta))
 	for panel in _panels:
@@ -176,6 +178,10 @@ func configure(body_visual: Node3D, fast_power_stroke_airspeed: float) -> void:
 func update_flight_state(flight_velocity: Vector3, is_airborne: bool) -> void:
 	_flight_velocity = flight_velocity
 	_is_airborne = is_airborne
+
+
+func set_ground_spread(spread: float) -> void:
+	_ground_spread = clampf(spread, 0.0, 1.0)
 
 
 func play_beat(request: WingBeatAnimationRequest) -> void:

@@ -38,7 +38,14 @@ func get_flight_intent(current_velocity: Vector3) -> FlightIntent:
 		freelook_flight_direction = steering_direction
 	was_freelooking = freelooking
 
-	var movement_strength := get_movement_input().length()
+	var movement_input := get_movement_input()
+	var wants_backward := Input.is_action_pressed("move_backward")
+	var wants_exertion := Input.is_action_pressed("exertion")
+	var wants_directed_flap := (
+			Input.is_action_pressed("move_forward")
+			or Input.is_action_pressed("move_left")
+			or Input.is_action_pressed("move_right")
+	)
 	var intent := current_flight_intent
 	intent.desired_direction = (
 			freelook_flight_direction if freelooking else steering_direction
@@ -56,10 +63,22 @@ func get_flight_intent(current_velocity: Vector3) -> FlightIntent:
 			steering_direction
 	)
 	intent.force_wing_direction = false
-	intent.wants_airbrake = Input.is_key_pressed(KEY_SHIFT)
-	intent.wants_flap = movement_strength > 0.0 or Input.is_action_pressed("jump")
+	# Backward brakes rather than flapping; exertion adds reverse strokes to it.
+	intent.wants_airbrake = wants_backward
+	intent.wants_exertion = wants_exertion
+	intent.wants_flap = (
+			wants_directed_flap
+			or Input.is_action_pressed("jump")
+			or (wants_exertion and wants_backward)
+	)
 	intent.wants_upward_flap = Input.is_action_pressed("jump")
+	intent.wants_directed_flap = wants_directed_flap or (wants_exertion and wants_backward)
 	intent.requests_extra_flap = Input.is_action_just_pressed("jump")
+	intent.flap_direction = (
+			_get_exertion_flap_direction(movement_input, intent, current_velocity)
+			if wants_exertion
+			else intent.desired_direction
+	)
 	return intent
 
 
@@ -69,6 +88,25 @@ func get_turn_response_multiplier(_steering_direction: Vector3) -> float:
 
 func get_movement_input() -> Vector2:
 	return Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
+
+
+## Exertion strokes push the way the movement keys point: forward along the
+## steering direction, sideways relative to the camera, and backward straight
+## against the airflow to reinforce the airbrake.
+func _get_exertion_flap_direction(
+		movement_input: Vector2,
+		intent: FlightIntent,
+		current_velocity: Vector3
+) -> Vector3:
+	var forward := intent.desired_direction
+	var right := forward.cross(intent.lift_up_direction)
+	if right.length_squared() >= 0.0001:
+		right = right.normalized()
+	var backward := -forward
+	if current_velocity.length_squared() >= 0.0001:
+		backward = -current_velocity.normalized()
+	var longitudinal := forward if movement_input.y < 0.0 else backward
+	return right * movement_input.x + longitudinal * absf(movement_input.y)
 
 
 func _get_steering_direction() -> Vector3:

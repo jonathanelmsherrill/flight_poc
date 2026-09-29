@@ -9,3 +9,7 @@ func get_movement_input() -> Vector2:
 
 func is_jump_requested() -> bool:
 	return Input.is_action_just_pressed("jump")
+
+
+func is_sprint_requested() -> bool:
+	return Input.is_action_pressed("exertion")

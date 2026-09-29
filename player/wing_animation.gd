@@ -18,3 +18,10 @@ func play_beat(request: WingBeatAnimationRequest) -> void
 ## Optional.
 func update_flight_state(_flight_velocity: Vector3, _is_airborne: bool) -> void:
 	pass
+
+
+## How far the wings open while on the ground, from 0 (folded) to 1 (spread as
+## in flight), such as when raised to catch air during a takeoff sprint.
+## Optional.
+func set_ground_spread(_spread: float) -> void:
+	pass

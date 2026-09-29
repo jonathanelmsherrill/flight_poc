@@ -139,7 +139,7 @@ func get_control_command(
 		requested_lift_direction = controlled_force.normalized()
 	var target_wing_lift_side := requested_lift_direction
 	command.info_intended_aoa = target_aoa_magnitude
-	var gravity_fighting_speed := flyer_profile.get_gravity_fighting_speed(command.info_intended_aoa)
+	#var gravity_fighting_speed := flyer_profile.get_gravity_fighting_speed(command.info_intended_aoa)
 	#if gravity_fighting_speed > 0.0 and flight_speed < gravity_fighting_speed*0.9:
 	#		command.info_intended_aoa *= flight_speed / (gravity_fighting_speed*0.9)
 

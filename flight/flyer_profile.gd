@@ -27,7 +27,7 @@ extends Resource
 # Which is woefully incapable of keeping a 45 kg human in the air.   
 # Thus our fantasy winged flying human needs to be closer to 5.  
 # Doubling it halves induced drag and doubles lift. 12 lets you turn on a dime.
-@export var aerodynamic_authority := 2.8
+@export var aerodynamic_authority := 5
 
 # Maximum aerodynamic acceleration the wings/body can physically tolerate.
 # At high speed this becomes the limiting factor and forces tighter wing trim.
@@ -123,8 +123,8 @@ func get_gravity_fighting_speed(aoa: float) -> float:
 
 # Force is inactive while the animator folds and returns the wings to their
 # ready position. No new power stroke can begin during this interval.
-@export_range(0.01, 2.0, 0.01) var low_airspeed_flap_recovery_duration := 0.15
-@export_range(0.01, 2.0, 0.01) var high_airspeed_flap_recovery_duration := 0.09
+@export_range(0.01, 2.0, 0.01) var low_airspeed_flap_recovery_duration := 0.11
+@export_range(0.01, 2.0, 0.01) var high_airspeed_flap_recovery_duration := 0.05
 
 
 func get_power_stroke_duration(airspeed: float) -> float:

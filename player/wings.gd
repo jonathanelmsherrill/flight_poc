@@ -26,7 +26,8 @@ func set_animation(new_animation: WingAnimation) -> void:
 func update_aerodynamic_pose(
 		flight_velocity: Vector3,
 		wing_surface_normal: Vector3,
-		shoulder_position: Vector3
+		shoulder_position: Vector3,
+		is_airborne: bool = true
 ) -> void:
 	if wing_surface_normal.length_squared() < MIN_DIRECTION_LENGTH_SQUARED:
 		return
@@ -52,6 +53,8 @@ func update_aerodynamic_pose(
 	var chord_back := span_direction.cross(surface_normal).normalized()
 	global_position = shoulder_position
 	global_basis = Basis(span_direction, surface_normal, chord_back)
+	if is_instance_valid(wing_animation):
+		wing_animation.update_flight_state(flight_velocity, is_airborne)
 
 
 ## Chooses a stable direction across the wing when airflow cannot determine

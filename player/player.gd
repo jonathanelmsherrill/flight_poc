@@ -50,7 +50,7 @@ func _ready() -> void:
 	flyer_state.wing_normal = global_basis.y
 	flyer_state.active_power_stroke_duration = flyer_profile.get_power_stroke_duration(0.0)
 	flyer_state.active_flap_recovery_duration = flyer_profile.get_flap_recovery_duration(0.0)
-	wing_animation = SimpleWingAnimation.new()
+	wing_animation = AiOpus3ptWingAnimation1.new()
 	wings.set_animation(wing_animation)
 	wing_animation.configure(visual_root, flyer_profile.fast_power_stroke_airspeed)
 	activate_flight_input_mode(0)
@@ -326,7 +326,8 @@ func update_visual_orientation(_delta: float) -> void:
 	wings.update_aerodynamic_pose(
 			velocity,
 		flyer_state.wing_normal,
-		shoulder_position
+		shoulder_position,
+		flyer_state.is_airborne
 	)
 	wing_force_arrow.show_force(physics_result.wing_aerodynamic_force, shoulder_position)
 

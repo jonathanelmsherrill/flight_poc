@@ -27,12 +27,19 @@ func update_aerodynamic_pose(
 		flight_velocity: Vector3,
 		wing_surface_normal: Vector3,
 		shoulder_position: Vector3,
+		body_right: Vector3,
 		is_airborne: bool = true
 ) -> void:
 	if wing_surface_normal.length_squared() < MIN_DIRECTION_LENGTH_SQUARED:
 		return
 
 	var surface_normal := wing_surface_normal.normalized()
+	# The span starts at the body's right each frame; airflow then sets its line
+	# while the sign stays toward that right. Carrying the previous span instead
+	# lets it drift to the left, e.g. turning in place or strafing then backing
+	# up, which mirrors the rig.
+	if body_right.length_squared() >= MIN_DIRECTION_LENGTH_SQUARED:
+		span_direction = body_right.normalized()
 	if flight_velocity.length_squared() >= MIN_DIRECTION_LENGTH_SQUARED:
 		var flight_direction := flight_velocity.normalized()
 		var requested_span_direction := flight_direction.cross(surface_normal)

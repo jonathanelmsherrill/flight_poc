@@ -4,6 +4,8 @@ extends CharacterBody3D
 @export var flyer_profile: FlyerProfile
 
 const JUMP_VELOCITY := 4.5
+## Horizontal speed at which the flight path, rather than facing, defines forward.
+#const MIN_FLIGHT_HEADING_SPEED := 5.0
 const BODY_DIRECTION_RESPONSE := 2.0
 const WING_DIRECTION_RESPONSE := 3.0
 const MIN_WING_DIRECTION_FORCE := 10.0
@@ -101,9 +103,11 @@ func player_intended_direction() -> Vector3:
 	return flight_input_controller.current_flight_intent.desired_direction
 
 
-## Capsule Girl's visible forward direction follows her flight path.
+## Capsule Girl's visible forward direction follows her flight path once she
+## has a real heading. Until then, such as just after a standing jump or while
+## carrying a moving platform's drift, it stays where she was facing.
 func visible_flight_direction() -> Vector3:
-	if flyer_state.is_airborne and velocity.length_squared() >= 0.0001:
+	if flyer_state.is_airborne: # and Vector2(velocity.x, velocity.z).length() >= MIN_FLIGHT_HEADING_SPEED:
 		return velocity.normalized()
 	return flyer_state.body_direction.normalized()
 
@@ -390,13 +394,15 @@ func update_stamina_energy(delta: float) -> void:
 func update_visual_orientation(_delta: float) -> void:
 	# The pill's long local axis follows travel in flight while its local top
 	# follows the persistent body-top direction. Walking remains world-upright.
+	# Both are built from world directions, so they set the global basis and
+	# stay correct however the Player node itself is placed in a scene.
 	if flyer_state.is_airborne and velocity.length_squared() >= 0.0001:
-		visual_root.basis = _basis_with_body_direction_and_top(
+		visual_root.global_basis = _basis_with_body_direction_and_top(
 				velocity.normalized(),
 				flyer_state.body_up_direction
 		)
 	elif not flyer_state.is_airborne:
-		visual_root.basis = _basis_with_up_and_forward(Vector3.UP, flyer_state.body_direction)
+		visual_root.global_basis = _basis_with_up_and_forward(Vector3.UP, flyer_state.body_direction)
 	var shoulder_position := visual_root.global_position + (
 			visual_root.global_basis.y * VISUAL_SHOULDER_OFFSET
 	) + visual_root.global_basis.z * VISUAL_WING_BACK_OFFSET
@@ -404,6 +410,7 @@ func update_visual_orientation(_delta: float) -> void:
 			velocity,
 		flyer_state.wing_normal,
 		shoulder_position,
+		visual_root.global_basis.x,
 		flyer_state.is_airborne
 	)
 	wing_force_arrow.show_force(physics_result.wing_aerodynamic_force, shoulder_position)

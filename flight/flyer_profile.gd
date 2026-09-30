@@ -27,7 +27,7 @@ extends Resource
 # Which is woefully incapable of keeping a 45 kg human in the air.   
 # Thus our fantasy winged flying human needs to be closer to 5.  
 # Doubling it halves induced drag and doubles lift. 12 lets you turn on a dime.
-@export var aerodynamic_authority := 5
+@export var aerodynamic_authority := 3.2
 
 # Maximum aerodynamic acceleration the wings/body can physically tolerate.
 # At high speed this becomes the limiting factor and forces tighter wing trim.
@@ -90,7 +90,7 @@ extends Resource
 # stroke; exertion strokes may use whichever limit is higher, paying the excess
 # from stamina. Exertion also skips the cadence wait, so each new stroke begins
 # as soon as the previous recovery ends.
-@export var max_flap_power := 7500.0
+@export var max_flap_power := 3500.0
 
 # Space held with a direction (W/A/D, or S while exerting) splits the stroke
 # between straight up and that direction's horizontal heading. This is the
@@ -104,13 +104,13 @@ extends Resource
 # At low airspeed, long strokes let the wings grab a large mass of air. Fast
 # airflow requires a shorter stroke and shallower visual angle of attack.
 @export_range(0.01, 100.0, 0.1) var fast_power_stroke_airspeed := 26.0
-@export_range(0.01, 2.0, 0.01) var low_airspeed_power_stroke_duration := 0.25
+@export_range(0.01, 2.0, 0.01) var low_airspeed_power_stroke_duration := 0.55
 @export_range(0.01, 2.0, 0.01) var high_airspeed_power_stroke_duration := 0.15
 
 # Force is inactive while the animator folds and returns the wings to their
 # ready position. No new power stroke can begin during this interval.
-@export_range(0.01, 2.0, 0.01) var low_airspeed_flap_recovery_duration := 0.12
-@export_range(0.01, 2.0, 0.01) var high_airspeed_flap_recovery_duration := 0.09
+@export_range(0.01, 2.0, 0.01) var low_airspeed_flap_recovery_duration := 0.35
+@export_range(0.01, 2.0, 0.01) var high_airspeed_flap_recovery_duration := 0.18
 
 
 @export_group("Ground Movement")

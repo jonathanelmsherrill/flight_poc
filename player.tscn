@@ -24,3 +24,15 @@ spring_length = 5.0
 
 [node name="Camera3D" type="Camera3D" parent="CameraPivot/CameraPitch/SpringArm3D" unique_id=1096163251]
 current = true
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1669393481]
+
+[node name="ProgressBar" type="ProgressBar" parent="CanvasLayer" unique_id=1591005318]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_top = -27.0
+offset_right = 250.0
+offset_bottom = 3.0
+grow_vertical = 0
+value = 100.0

@@ -36,7 +36,7 @@ sky = SubResource("Sky_flmtc")
 shape = SubResource("BoxShape3D_vi102")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="StaticBody3D" unique_id=516964071]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.036454678, -0.05507469, 0.014369488)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.06304312, -0.07544994, 0.012526989)
 mesh = SubResource("BoxMesh_vi102")
 
 [node name="Player" parent="." unique_id=1113893101 instance=ExtResource("1_a4rsl")]

@@ -76,7 +76,7 @@ layout_mode = 2
 [node name="VerticalSpeedLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=496292676]
 layout_mode = 2
 
-[node name="WindVelocityLabel" type="Label" parent="CanvasLayer/DebugContainer"]
+[node name="WindVelocityLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=158324720]
 layout_mode = 2
 
 [node name="AoaLabel" type="Label" parent="CanvasLayer/DebugContainer" unique_id=1768424989]

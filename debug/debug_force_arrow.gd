@@ -29,7 +29,7 @@ func show_force(force: Vector3, origin: Vector3) -> void:
 		return
 
 	visible = true
-	global_basis = _basis_with_local_up(force.normalized())
+	global_basis = _basis_with_local_up(force.normalized()) # Alternately, global_basis = Basis(Quaternion(Vector3.UP, force.normalized()))
 	var arrow_length := force.length() * WORLD_UNITS_PER_NEWTON
 	var head_length := minf(0.45, arrow_length * 0.28)
 	var shaft_length := maxf(0.02, arrow_length - head_length)

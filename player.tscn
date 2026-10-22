@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://c5p17hr0b1lfl"]
 
 [ext_resource type="Script" uid="uid://kqi1mvhef4sc" path="res://player.gd" id="1_4flbx"]
+[ext_resource type="Script" uid="uid://dakmrx2mp2i0g" path="res://debug_container.gd" id="2_onrkg"]
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_q3t11"]
 
@@ -36,3 +37,8 @@ offset_right = 250.0
 offset_bottom = 3.0
 grow_vertical = 0
 value = 100.0
+
+[node name="DebugContainer" type="VBoxContainer" parent="CanvasLayer" unique_id=522750976]
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("2_onrkg")

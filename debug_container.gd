@@ -1,11 +1,16 @@
+class_name DebugContainer
 extends VBoxContainer
 
+var labels: Dictionary[StringName, Label] = {}
 
-# Called when the node enters the scene tree for the first time.
-func _ready() -> void:
-	pass # Replace with function body.
-
-
-# Called every frame. 'delta' is the elapsed time since the previous frame.
-func _process(delta: float) -> void:
-	pass
+## Show Debug message
+## handle - title of readout
+## text - value of readout
+func submit(handle: StringName, text: String) -> void:
+	var label := labels.get(handle) as Label
+	if not label:
+		label = Label.new()
+		label.name = String(handle)
+		add_child(label)
+		labels[handle] = label
+	label.text = handle + ": " + text 

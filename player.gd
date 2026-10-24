@@ -4,6 +4,7 @@ extends CharacterBody3D
 @onready var camera_pivot: Node3D = $CameraPivot
 @onready var camera_pitch: Node3D = $CameraPivot/CameraPitch
 @onready var stamina_bar: ProgressBar = $CanvasLayer/ProgressBar
+@onready var debug_container: DebugContainer = $CanvasLayer/DebugContainer 
 
 const GRAVITY := 9.8 #m/s^2
 const JUMP := 4.5 # m/s
@@ -58,7 +59,7 @@ func _physics_process(delta: float) -> void:
 		var lift_fraction := clampf(horizontal_speed / FLIGHT_SPEED, 0.0, 1.0)
 		var lift_acceleration := GRAVITY * lift_fraction * delta
 		velocity.y += lift_acceleration
-		
+				
 		# Simple turning
 		var intended_direction = forward.normalized() # Camera forward
 		var current_direction := horizontal_velocity.normalized()
@@ -83,6 +84,10 @@ func _physics_process(delta: float) -> void:
 			flap_direction = flap_direction.normalized()
 			velocity += flap_direction * FLAP_STRENGTH
 			stamina -= FLAP_COST
+	
+		# DEBUG DISPLAY
+		debug_container.submit("Lift % of Gravity", str(lift_fraction) + "%")
+		debug_container.submit("Drag", str(air_drag/delta) + "m/s")
 	
 	move_and_slide()
 		

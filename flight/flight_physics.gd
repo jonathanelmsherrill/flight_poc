@@ -192,7 +192,7 @@ static func get_induced_drag_force(
 
 func _get_lift_direction(wing_normal: Vector3, air_velocity: Vector3) -> Vector3:
 	var airflow_direction := air_velocity.normalized()
-	var perpendicular_normal := wing_normal - airflow_direction * wing_normal.dot(airflow_direction)
+	var perpendicular_normal := wing_normal - airflow_direction * wing_normal.dot(airflow_direction) # Remove any force normal to the wing that opposes our current air flow. 
 	if perpendicular_normal.length_squared() < 0.0001:
 		return Vector3.ZERO
 	return perpendicular_normal.normalized()

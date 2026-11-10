@@ -14,12 +14,15 @@ const STAMINA_RECOVERY : float = 7 #/s
 const FLAP_COST : float = 7 #Stamina to flap
 const FLAP_STRENGTH : float = JUMP
 const FLIGHT_SPEED : float = 12.0 # m/s
-const AIR_DRAG_COEFFICIENT := 0.04 # 0.04 * 10^2 = 4 drag at speed 10.
+const FLAP_NORMAL_LENGTH : float = 0.7 # seconds between sustained flaps 
+const AIR_DRAG_COEFFICIENT : float = 0.04 # 0.04 * 10^2 = 4 drag at speed 10.
+const INDUCED_DRAG_COEFFICIENT : float = 0.05 # 0.05 is about 0.05*(9.8 m/s^2)^2 / (10m/s)^2 = around 0.5 m/s drag at speed 10, to 1 m/s drag around speed 2.5 to 5 m/s drag at speed 1
 const GENTLE_MAX_TURN_RATE : float = PI/8.0 #For gentle turns, pi/4 = 45o/second 
 const GENTLE_MIN_RESPONSE_TIME : float = 0.6 #For small turns, we take at least this long to avoid small sharp corrections needlessly costing drag
 const STRUCTURAL_LOAD_TOLERANCE : float = 900 #Newtons
 var BASE_MASS : float = 45 # kg
 var stamina := MAX_STAMINA
+var time_since_flap : float = 0
 
 
 # Called when the node enters the scene tree for the first time.
@@ -28,8 +31,7 @@ func _ready() -> void:
 	pass # Replace with function body.
 
 func _physics_process(delta: float) -> void:
-	if not is_on_floor():
-		velocity.y -= GRAVITY * delta 
+
 	
 	var flying := not is_on_floor()
 	
@@ -58,6 +60,9 @@ func _physics_process(delta: float) -> void:
 	
 	if flying:
 		
+		var flying_speed = velocity.length()
+		time_since_flap += delta 
+		
 		# INPUT
 		var desired_direction := forward #Camera forward - where we're looking
 		var wants_directed_flap := 	Input.is_action_pressed("move_forward")
@@ -72,42 +77,44 @@ func _physics_process(delta: float) -> void:
 		
 		#PHYSICS
 		var updated_velocity := apply_energy_neutral_lift(velocity, desired_force, BASE_MASS, delta)
-		
-		
-		
-		# Lift
-		var horizontal_velocity := Vector3(velocity.x, 0.0, velocity.z)
-		var horizontal_speed := horizontal_velocity.length()
-		var lift_fraction := clampf(horizontal_speed / FLIGHT_SPEED, 0.0, 1.0)
-		var lift_acceleration := GRAVITY * lift_fraction * delta
-		velocity.y += lift_acceleration
+		var effective_lift_force := (updated_velocity - velocity) * BASE_MASS / delta
+		var lift_fraction := effective_lift_force.dot(Vector3.UP) / (GRAVITY * BASE_MASS)
 				
-		# Simple turning
-		var intended_direction = forward.normalized() # Camera forward
-		var current_direction := horizontal_velocity.normalized()
-		var new_direction := current_direction.slerp(intended_direction, clampf(1 * delta, 0.0, 1.0)) # ... 
-		
 		# Parasitical Drag
-		var air_drag := AIR_DRAG_COEFFICIENT * horizontal_speed * horizontal_speed * delta
-		horizontal_speed -= air_drag		
+		var air_drag : float = AIR_DRAG_COEFFICIENT * flying_speed * flying_speed * delta
 		
-		horizontal_velocity = new_direction * horizontal_speed
-		velocity.x = horizontal_velocity.x
-		velocity.z = horizontal_velocity.z
+		# INDUCED DRAG
+		var induced_drag : float = INDUCED_DRAG_COEFFICIENT * effective_lift_force.length_squared() / max(flying_speed * flying_speed,0.1) / BASE_MASS * delta
 		
-		
-		
-		
-		var up_flap_wanted := Input.is_action_just_pressed("jump") 
-		var forward_flap_wanted := Input.is_action_just_pressed("move_forward") 
+		updated_velocity = updated_velocity.normalized() * max(flying_speed - air_drag - induced_drag, 0)
+
+		var up_flap_wanted := Input.is_action_just_pressed("jump") or wants_upward_flap and time_since_flap > FLAP_NORMAL_LENGTH
+		var forward_flap_wanted := Input.is_action_just_pressed("move_forward") or wants_directed_flap and time_since_flap > FLAP_NORMAL_LENGTH
 		if(up_flap_wanted or forward_flap_wanted) and stamina > FLAP_COST:
+			time_since_flap = 0
 			var flap_direction : Vector3 = forward if forward_flap_wanted else Vector3()
 			flap_direction.y = 1 if up_flap_wanted else 0
 			flap_direction = flap_direction.normalized()
-			velocity += flap_direction * FLAP_STRENGTH
+			updated_velocity += flap_direction * FLAP_STRENGTH
 			stamina -= FLAP_COST
-	
+
+
+		
+		
+		# GRAVITY
+		updated_velocity.y -= GRAVITY * delta
+
+		
+
+		# APPLY UPDATE
+		velocity = updated_velocity
+		
+		
+		
 		# DEBUG DISPLAY
+
+
+		debug_container.submit("induced_drag", str(induced_drag) + "%")
 		debug_container.submit("Lift % of Gravity", str(lift_fraction) + "%")
 		debug_container.submit("Drag", str(air_drag/delta) + "m/s")
 	

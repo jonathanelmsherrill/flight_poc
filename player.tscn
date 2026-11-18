@@ -10,8 +10,13 @@
 [node name="Player" type="CharacterBody3D" unique_id=718369444]
 script = ExtResource("1_4flbx")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=1851921318]
+[node name="VisualBase" type="Node3D" parent="." unique_id=592384977]
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="VisualBase" unique_id=1851921318]
 mesh = SubResource("CapsuleMesh_q3t11")
+
+[node name="WingBase" type="Node3D" parent="VisualBase" unique_id=361382911]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0.5)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=381043309]
 shape = SubResource("CapsuleShape3D_4flbx")

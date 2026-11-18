@@ -24,9 +24,10 @@ func configure(attach_point: Node3D) -> void:
 ## Pivots the wings so their surface faces wing_normal with the span toward
 ## body_right. Forward follows from those two, assuming the wings are never
 ## upside down.
-func direct_wings(wing_normal: Vector3, body_right: Vector3) -> void:
+func direct_wings(wing_normal: Vector3) -> void:
 	var up := wing_normal.normalized()
-	var right := body_right - up * body_right.dot(up) # Keep the span in the wing plane
+	var body_right := get_parent_node_3d().global_basis.x
+	var right := body_right - up * body_right.dot(up) # Keep the span in the wing plane; issue here if we ever point sideways. 
 	if right.length_squared() < 0.0001:
 		return # Right is along the normal; keep the last pose
 	right = right.normalized()

@@ -5,6 +5,8 @@ extends CharacterBody3D
 @onready var camera_pitch: Node3D = $CameraPivot/CameraPitch
 @onready var stamina_bar: ProgressBar = $CanvasLayer/ProgressBar
 @onready var debug_container: DebugContainer = $CanvasLayer/DebugContainer 
+@onready var wing_base: Node3D = $VisualBase/WingBase
+@onready var visual_base: Node3D = $VisualBase
 
 const GRAVITY : float = 9.8 #m/s^2
 const JUMP := 4.5 # m/s
@@ -20,14 +22,22 @@ const INDUCED_DRAG_COEFFICIENT : float = 0.05 # 0.05 is about 0.05*(9.8 m/s^2)^2
 const GENTLE_MAX_TURN_RATE : float = PI/8.0 #For gentle turns, pi/4 = 45o/second 
 const GENTLE_MIN_RESPONSE_TIME : float = 0.6 #For small turns, we take at least this long to avoid small sharp corrections needlessly costing drag
 const STRUCTURAL_LOAD_TOLERANCE : float = 900 #Newtons
+const LIFT_SLOPE := 5.0 # This is the ratio of lift to angle of attack. 1 radian = ~ 60 degrees, so if the stall onset is ~22 degrees, our max lift is 1.33 what it was before.
+const STALL_ONSET_AOA := deg_to_rad(15.0)  #This would be more like 9-14 degrees in reality I think. 
+const AERODYNAMIC_AUTHORITY := 3.2 # newtons at 1 m/s at a CL of 1 (Apprximately pi / LIFT_SLOPE radians)
+# Actual unit is something like kg/m/degree AoA, and is approximately 1/2pS * a dimentionless lift coefficient. 
+# which intuitively might lead you towards "scaled to the effectiveness in moving it, the amount of air the wing interacts for traveling a meter at ". 
+# This is unrealistic for a human-figure wing to the tune of 25 times, and one of two very unrealistic elements in the game. (The other being... powah!)
 var BASE_MASS : float = 45 # kg
 var stamina := MAX_STAMINA
 var time_since_flap : float = 0
+var wings : Wings = Wings.new()
 
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	wings.configure(wing_base)
 	pass # Replace with function body.
 
 func _physics_process(delta: float) -> void:
@@ -57,6 +67,15 @@ func _physics_process(delta: float) -> void:
 		#JUMP
 		if Input.is_action_just_pressed("jump") :
 			velocity.y += JUMP
+			
+		#APPLY VISUAL 
+		# Rotate compass 
+		if move_direction.length_squared() > 0:
+			var target_compass_direction := atan2(-velocity.x, -velocity.z) # Point -Z along velocity
+			visual_base.rotation.y = target_compass_direction
+			visual_base.rotation.x = 0
+			
+			
 	
 	if flying:
 		
@@ -74,6 +93,7 @@ func _physics_process(delta: float) -> void:
 		if desired_force.length() > STRUCTURAL_LOAD_TOLERANCE:
 			desired_force *= STRUCTURAL_LOAD_TOLERANCE / desired_force.length()
 		
+		var desired_aoa := get_aoa_from_desired_force(desired_force, velocity.length())
 		
 		#PHYSICS
 		var updated_velocity := apply_energy_neutral_lift(velocity, desired_force, BASE_MASS, delta)
@@ -104,7 +124,19 @@ func _physics_process(delta: float) -> void:
 		# GRAVITY
 		updated_velocity.y -= GRAVITY * delta
 
+		#APPLY VISUAL 
+		# Rotate compass 
+		var target_compass_direction := atan2(-velocity.x, -velocity.z) # Point -Z along velocity
+		visual_base.rotation.y = target_compass_direction
+		# Rotate pitch to speed
+		const MAX_TILT_AT_SPEED := deg_to_rad(70.0)
+		const TILT_FULL_SPEED := 15.0
+		var target_tilt := -MAX_TILT_AT_SPEED * minf( velocity.length() / TILT_FULL_SPEED, 1.0)
+		visual_base.rotation.x = target_tilt
 		
+		var wing_normal := velocity.normalized().rotated(visual_base.global_basis.x,(desired_aoa + PI / 2.0))
+		wings.direct_wings(wing_normal)
+
 
 		# APPLY UPDATE
 		velocity = updated_velocity
@@ -117,9 +149,20 @@ func _physics_process(delta: float) -> void:
 		debug_container.submit("induced_drag", str(induced_drag) + "%")
 		debug_container.submit("Lift % of Gravity", str(lift_fraction) + "%")
 		debug_container.submit("Drag", str(air_drag/delta) + "m/s")
+		debug_container.submit("Requested AOA", str(desired_aoa / PI * 180) + " deg")
 	
 	move_and_slide()
 
+
+func get_aoa_from_desired_force(desired_force : Vector3, airspeed : float) -> float:
+	# lift is linear with AOA over a small range 
+	# so let's define the lift force at 1 degree AoA
+	var base_lift_force := AERODYNAMIC_AUTHORITY * airspeed * airspeed # Already in newtons.
+	var lift_coefficient_needed := desired_force.length() / base_lift_force
+	var aoa_needed_raw := lift_coefficient_needed / LIFT_SLOPE 
+	return aoa_needed_raw
+	
+	
 func get_desired_force(flight_velocity : Vector3, desired_direction : Vector3) -> Vector3:
 	
 	var flight_direction := flight_velocity.normalized()

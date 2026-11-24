@@ -17,13 +17,14 @@ const FLAP_COST : float = 7 #Stamina to flap
 const FLAP_STRENGTH : float = JUMP
 const FLIGHT_SPEED : float = 12.0 # m/s
 const FLAP_NORMAL_LENGTH : float = 0.7 # seconds between sustained flaps 
-const AIR_DRAG_COEFFICIENT : float = 0.04 # 0.04 * 10^2 = 4 drag at speed 10.
+const AIR_DRAG_COEFFICIENT : float = 0.008 # 0.008 * 10^2 = .8 drag at speed 10.
 const INDUCED_DRAG_COEFFICIENT : float = 0.05 # 0.05 is about 0.05*(9.8 m/s^2)^2 / (10m/s)^2 = around 0.5 m/s drag at speed 10, to 1 m/s drag around speed 2.5 to 5 m/s drag at speed 1
 const GENTLE_MAX_TURN_RATE : float = PI/8.0 #For gentle turns, pi/4 = 45o/second 
 const GENTLE_MIN_RESPONSE_TIME : float = 0.6 #For small turns, we take at least this long to avoid small sharp corrections needlessly costing drag
 const STRUCTURAL_LOAD_TOLERANCE : float = 900 #Newtons
 const LIFT_SLOPE := 5.0 # This is the ratio of lift to angle of attack. 1 radian = ~ 60 degrees, so if the stall onset is ~22 degrees, our max lift is 1.33 what it was before.
 const STALL_ONSET_AOA := deg_to_rad(15.0)  #This would be more like 9-14 degrees in reality I think. 
+const MAX_NORMAL_TRIM_AOA := deg_to_rad(6.0) 
 const AERODYNAMIC_AUTHORITY := 3.2 # newtons at 1 m/s at a CL of 1 (Apprximately pi / LIFT_SLOPE radians)
 # Actual unit is something like kg/m/degree AoA, and is approximately 1/2pS * a dimentionless lift coefficient. 
 # which intuitively might lead you towards "scaled to the effectiveness in moving it, the amount of air the wing interacts for traveling a meter at ". 
@@ -37,6 +38,7 @@ var wings : Wings = Wings.new()
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	$CameraPivot/CameraPitch/SpringArm3D.add_excluded_object(get_rid()) # Prevent player camera from clipping on player
 	wings.configure(wing_base)
 	pass # Replace with function body.
 
@@ -51,8 +53,8 @@ func _physics_process(delta: float) -> void:
 
 	var forward := camera_pitch.global_basis.z * -1
 	var right := camera_pitch.global_basis.x
-	forward.y = 0
-	right.y = 0
+	#forward.y = 0
+	#right.y = 0
 	forward = forward.normalized()
 	right = right.normalized()
 
@@ -90,21 +92,35 @@ func _physics_process(delta: float) -> void:
 		
 		# INTENT
 		var desired_force := get_desired_force(velocity, desired_direction)
-		if desired_force.length() > STRUCTURAL_LOAD_TOLERANCE:
-			desired_force *= STRUCTURAL_LOAD_TOLERANCE / desired_force.length()
+		var desired_aoa := clampf(get_aoa_from_desired_force(desired_force, velocity.length()),0,MAX_NORMAL_TRIM_AOA)
+
+		# Rotate compass and compute wing normal
+		var target_compass_direction := atan2(-velocity.x, -velocity.z) # Point -Z along velocity
+		visual_base.rotation.y = target_compass_direction
+		# var wing_normal := velocity.normalized().rotated(visual_base.global_basis.x,(desired_aoa + PI / 2.0))
+		var desired_force_direction := desired_force.normalized()
+		var velocity_direction := velocity.normalized()
+		var lift_plane_up := orthogonal_component(desired_force_direction, velocity_direction).normalized()
+		var wing_normal := lift_plane_up * cos(desired_aoa) + velocity_direction * sin(desired_aoa) * -1
 		
-		var desired_aoa := get_aoa_from_desired_force(desired_force, velocity.length())
 		
 		#PHYSICS
-		var updated_velocity := apply_energy_neutral_lift(velocity, desired_force, BASE_MASS, delta)
-		var effective_lift_force := (updated_velocity - velocity) * BASE_MASS / delta
-		var lift_fraction := effective_lift_force.dot(Vector3.UP) / (GRAVITY * BASE_MASS)
+		var actual_airflow := -1*velocity # For now airflow is only from moving		
+		var get_lift_direction := get_lift_direction(wing_normal, actual_airflow) # Lift can only be tangential to wing surface
+		var true_effective_aoa := get_effective_aoa(wing_normal, actual_airflow)
+		var actual_lift_coefficient := get_lift_coefficient(true_effective_aoa) 
+		var actual_lift_force := get_lift_direction * actual_lift_coefficient * AERODYNAMIC_AUTHORITY * actual_airflow.length_squared()
+		
+		actual_lift_force = actual_lift_force.limit_length(STRUCTURAL_LOAD_TOLERANCE)
+		
+		var updated_velocity := apply_energy_neutral_lift(velocity, actual_lift_force, BASE_MASS, delta)
+		var lift_fraction := actual_lift_force.dot(Vector3.UP) / (GRAVITY * BASE_MASS)
 				
 		# Parasitical Drag
 		var air_drag : float = AIR_DRAG_COEFFICIENT * flying_speed * flying_speed * delta
 		
 		# INDUCED DRAG
-		var induced_drag : float = INDUCED_DRAG_COEFFICIENT * effective_lift_force.length_squared() / max(flying_speed * flying_speed,0.1) / BASE_MASS * delta
+		var induced_drag : float = INDUCED_DRAG_COEFFICIENT * actual_lift_force.length_squared() / max(flying_speed * flying_speed,0.1) / BASE_MASS / AERODYNAMIC_AUTHORITY * delta
 		
 		updated_velocity = updated_velocity.normalized() * max(flying_speed - air_drag - induced_drag, 0)
 
@@ -125,16 +141,11 @@ func _physics_process(delta: float) -> void:
 		updated_velocity.y -= GRAVITY * delta
 
 		#APPLY VISUAL 
-		# Rotate compass 
-		var target_compass_direction := atan2(-velocity.x, -velocity.z) # Point -Z along velocity
-		visual_base.rotation.y = target_compass_direction
 		# Rotate pitch to speed
 		const MAX_TILT_AT_SPEED := deg_to_rad(70.0)
 		const TILT_FULL_SPEED := 15.0
 		var target_tilt := -MAX_TILT_AT_SPEED * minf( velocity.length() / TILT_FULL_SPEED, 1.0)
 		visual_base.rotation.x = target_tilt
-		
-		var wing_normal := velocity.normalized().rotated(visual_base.global_basis.x,(desired_aoa + PI / 2.0))
 		wings.direct_wings(wing_normal)
 
 
@@ -144,14 +155,31 @@ func _physics_process(delta: float) -> void:
 		
 		
 		# DEBUG DISPLAY
-
-
-		debug_container.submit("induced_drag", str(induced_drag) + "%")
+		debug_container.submit("Velocity ", str(velocity.length()) + " m/s")
+		debug_container.submit("Induced drag", str(induced_drag/delta) + " m/s")
+		debug_container.submit("Parasitical Drag", str(air_drag/delta) + " m/s")
 		debug_container.submit("Lift % of Gravity", str(lift_fraction) + "%")
-		debug_container.submit("Drag", str(air_drag/delta) + "m/s")
 		debug_container.submit("Requested AOA", str(desired_aoa / PI * 180) + " deg")
 	
 	move_and_slide()
+
+
+func get_lift_direction(wing_normal: Vector3, air_velocity: Vector3) -> Vector3:
+	var airflow_direction := air_velocity.normalized()
+	var perpendicular_normal := orthogonal_component(wing_normal, airflow_direction)
+	if perpendicular_normal.length_squared() < 0.0001:
+			return Vector3.ZERO
+	return perpendicular_normal.normalized()
+
+func get_effective_aoa(wing_normal: Vector3, air_velocity: Vector3) -> float:
+	if wing_normal.length_squared() < 0.0001 or air_velocity.length_squared() < 0.0001:
+		return 0.0
+	return PI/2 - wing_normal.angle_to(air_velocity) ## Remember wing_normal is perpendicular to the wing plane, so the complement of the difference in angle.
+
+func get_lift_coefficient(aoa: float) -> float:
+	var clamped_aoa := clampf(absf(aoa), 0.0, PI)
+	var attached_flow_lift := LIFT_SLOPE * clamped_aoa
+	return attached_flow_lift #Here we assume airflow is always attached; I'm ignoring detached airflow for now. 
 
 
 func get_aoa_from_desired_force(desired_force : Vector3, airspeed : float) -> float:
